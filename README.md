@@ -22,7 +22,7 @@ python tools/serve.py
 |---|---|
 | Clic / Ctrl+clic / arrastrar en vacío | Seleccionar / añadir / selección por caja |
 | Mayús+clic en un edificio (y arrastrar sin soltar) | Copiarlo con su receta y sus clasificadores; arrastrando se ponen copias en fila (las que chocan se saltan) |
-| Arrastrar selección, flechas (Mayús = 5) | Mover (los clasificadores enganchados van con el edificio; si su otro extremo no se mueve, quedan sueltos) |
+| Arrastrar selección, flechas (Mayús = 5) | Mover. Los clasificadores enganchados van con su edificio. Las cintas no se estiran: las conexiones con lo que no se mueve se cortan, y al soltar una cinta encima de otra del mismo nivel la de debajo desaparece y la movida ocupa su sitio (si el sentido es contrario, no deja). Los extremos libres que se miran se vuelven a enganchar |
 | Doble clic | Toda la línea de cinta, o todos los edificios iguales |
 | R | Girar 90° (selección o fantasma al colocar). Con la herramienta de cinta: el codo en diagonal empieza por el otro lado |
 | + / − | Altura de la cinta (también a mitad de trazado: sube o baja en esa casilla) |

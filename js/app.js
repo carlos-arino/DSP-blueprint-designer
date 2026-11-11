@@ -489,7 +489,9 @@
 
     if (isBelt(b)) {
       const color = BELT_COLORS[b.itemId] || cat.color;
-      const t = b.outputObjIdx >= 0 ? o.get(b.outputObjIdx) : null;
+      let t = b.outputObjIdx >= 0 ? o.get(b.outputObjIdx) : null;
+      // mientras se arrastra, una conexión con un extremo quieto no se dibuja estirada (se va a cortar)
+      if (t && o.offsetOf) { const [tx, ty] = o.offsetOf(t); if (tx !== ox || ty !== oy) t = null; }
       // dos pasadas: primero todos los tramos, luego flechas (si no, el tramo siguiente tapa la flecha)
       const pass = o.pass || 'all';
       const up = levelOf(b) > 0;
@@ -1448,6 +1450,82 @@
       if (b.inputObjIdx >= 0 && !moved.has(bs[b.inputObjIdx])) { b.inputObjIdx = -1; }
       if (b.outputObjIdx >= 0 && !moved.has(bs[b.outputObjIdx])) { b.outputObjIdx = -1; }
     }
+    // Las cintas no se estiran: si un extremo de una conexión de cinta se mueve y el otro no, se corta
+    let cut = 0;
+    for (const b of bs) {
+      if (!isBelt(b)) continue;
+      const t = bs[b.outputObjIdx], f = bs[b.inputObjIdx];
+      if (t && moved.has(b) !== moved.has(t)) { b.outputObjIdx = -1; b.outputToSlot = 0; cut++; }
+      if (f && !isBelt(f) && moved.has(b) !== moved.has(f)) { b.inputObjIdx = -1; b.inputFromSlot = 0; cut++; }
+    }
+    // Cinta soltada sobre otra (misma casilla y nivel): la de debajo desaparece y la movida ocupa su sitio
+    const merged = mergeDroppedBelts(moved);
+    if (merged === false) {
+      // no encajan: se deshace el movimiento
+      S.bp = JSON.parse(S.undo.pop()); S.sel.clear();
+      toast('No se puede soltar ahí: la cinta no encaja con la de debajo (sentido contrario)', true);
+      return;
+    }
+    const joined = joinBeltEnds(new Set([...moved].filter((b) => S.bp.buildings.includes(b))));
+    if (merged) toast(merged > 1 ? `${merged} cintas sustituidas` : 'Cinta sustituida');
+    else if (joined) toast(joined > 1 ? `${joined} conexiones de cinta rehechas` : 'Conexión de cinta rehecha');
+    else if (cut) toast(cut > 1 ? `${cut} conexiones de cinta cortadas al mover` : '1 conexión de cinta cortada al mover');
+  }
+
+  // Engancha extremos libres que se miran: una cinta sin salida cuya casilla de delante tiene otra cinta del
+  // mismo nivel (entre lo movido y lo quieto). Devuelve cuántas conexiones ha hecho.
+  function joinBeltEnds(moved) {
+    const bs = S.bp.buildings;
+    let n = 0;
+    const ahead = (b) => {
+      const a = b.yaw * Math.PI / 180, x = Math.round(b.x + Math.sin(a)), y = Math.round(b.y + Math.cos(a));
+      return bs.find((t) => isBelt(t) && t !== b && Math.abs(t.x - x) < 0.3 && Math.abs(t.y - y) < 0.3 && levelOf(t) === levelOf(b));
+    };
+    for (const b of bs) {
+      if (!isBelt(b) || b.outputObjIdx >= 0) continue;
+      const t = ahead(b);
+      if (!t || moved.has(b) === moved.has(t)) continue;
+      // no enganchar contra el frente de t (flujo contrario)
+      if (bs[t.outputObjIdx] === b || ahead(t) === b) continue;
+      b.outputObjIdx = bs.indexOf(t); b.outputToSlot = 1; n++;
+    }
+    return n;
+  }
+
+  // Fusiona cada cinta movida con la cinta quieta que tenga debajo. Devuelve cuántas, o false si alguna no encaja
+  // (la que llegaba a la de debajo vendría desde la casilla a la que sale la movida: flujo contrario).
+  function mergeDroppedBelts(moved) {
+    const bs = S.bp.buildings, pairs = [];
+    for (const m of moved) {
+      if (!isBelt(m)) continue;
+      const e = bs.find((x) => isBelt(x) && !moved.has(x) && Math.abs(x.x - m.x) < 0.3 && Math.abs(x.y - m.y) < 0.3 && levelOf(x) === levelOf(m));
+      if (e) pairs.push([m, e]);
+    }
+    if (!pairs.length) return 0;
+    const cellOf = (b) => `${Math.round(b.x)},${Math.round(b.y)},${levelOf(b)}`;
+    for (const [m, e] of pairs) {
+      const out = bs[m.outputObjIdx] || bs[e.outputObjIdx];
+      const preds = bs.filter((x) => (isBelt(x) || isSorter(x)) && x !== m && bs[x.outputObjIdx] === e && isBelt(x));
+      if (out && preds.some((p) => cellOf(p) === cellOf(out))) return false;
+    }
+    for (const [m, e] of pairs) {
+      const mi = bs.indexOf(m), ei = bs.indexOf(e);
+      if (m.outputObjIdx < 0 && e.outputObjIdx >= 0) {
+        m.outputObjIdx = e.outputObjIdx; m.outputToSlot = e.outputToSlot;
+        const t = bs[m.outputObjIdx];
+        if (t && isBelt(t)) { const dx = Math.round(t.x - m.x), dy = Math.round(t.y - m.y); if (dx || dy) m.yaw = m.yaw2 = dirYaw(dx, dy); }
+      }
+      if (m.inputObjIdx < 0 && e.inputObjIdx >= 0) { m.inputObjIdx = e.inputObjIdx; m.inputFromSlot = e.inputFromSlot; }
+      // lo que apuntaba a la de debajo (cintas, clasificadores) pasa a apuntar a la movida
+      for (const x of bs) {
+        if (x === m) continue;
+        if (x.outputObjIdx === ei) x.outputObjIdx = mi;
+        if (x.inputObjIdx === ei) x.inputObjIdx = mi;
+      }
+      if (m.parameters.length === 0 && e.parameters.length) m.parameters = e.parameters.slice();
+    }
+    removeBuildings(new Set(pairs.map((p) => p[1])));
+    return pairs.length;
   }
   // Borra los clasificadores a los que les falta el inicio o el fin
   function cleanSorters() {
