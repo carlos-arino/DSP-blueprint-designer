@@ -1,0 +1,2075 @@
+/* Editor de blueprints de Dyson Sphere Program */
+(function () {
+  'use strict';
+  const BP = window.DSPBP;
+  const IT = window.DSPItems;
+  const $ = (id) => document.getElementById(id);
+
+  // Colores por nivel, iguales para cintas y clasificadores (Mk.I amarillo, Mk.II verde, Mk.III azul)
+  const BELT_COLORS = {
+    2001: '#d1b13e', 2002: '#58c46a', 2003: '#4f9dff',
+    2011: '#d1b13e', 2012: '#58c46a', 2013: '#4f9dff', 2014: '#e6ecf5',
+  };
+  const PRODUCTION = new Set(['smelt', 'assembly', 'chem', 'research']);
+  const isBelt = (b) => BP.BELTS.has(b.itemId);
+  const isSorter = (b) => BP.SORTERS.has(b.itemId);
+
+  // ------------------------------------------------------------------ estado
+  const S = {
+    bp: null, name: '', fileHandle: null, dirHandle: null, library: [],
+    sel: new Set(), view: { cx: 0, cy: 0, scale: 20 },
+    tool: 'select', placeItem: null, ghostRot: 0,
+    clip: null, undo: [], redo: [], dirty: false,
+    mouse: { sx: 0, sy: 0, wx: 0, wy: 0, inside: false }, drag: null, space: false,
+    templates: {}, showLabels: true, showLinks: false,
+    level: 'all', splitModel: 39, beltFlip: false,
+  };
+
+  // ------------------------------------------------------------------ plantillas
+  function loadTemplates() {
+    // las aprendidas en el navegador solo cubren edificios que no están en js/templates.js
+    S.templates = {};
+    try { Object.assign(S.templates, JSON.parse(localStorage.getItem('dspbp.templates') || '{}')); } catch (e) { /* sin almacenamiento */ }
+    Object.assign(S.templates, window.DSPDefaultTemplates || {});
+  }
+  function learnTemplates(bp) {
+    let changed = false;
+    for (const b of bp.buildings) {
+      if (S.templates[b.itemId]) continue;
+      const belt = isBelt(b);
+      const loose = !belt && !isSorter(b) && b.inputObjIdx < 0 && b.outputObjIdx < 0;
+      S.templates[b.itemId] = {
+        modelIndex: b.modelIndex,
+        parameters: belt ? [] : b.parameters.slice(),
+        outputToSlot: loose ? b.outputToSlot : 0, inputFromSlot: loose ? b.inputFromSlot : 0,
+        outputFromSlot: loose ? b.outputFromSlot : 0, inputToSlot: belt ? 1 : loose ? b.inputToSlot : 0,
+      };
+      changed = true;
+    }
+    if (changed) {
+      try { localStorage.setItem('dspbp.templates', JSON.stringify(S.templates)); } catch (e) { /* ignorar */ }
+      renderPalette();
+    }
+  }
+
+  // ------------------------------------------------------------------ utilidades
+  function toast(msg, err) {
+    const t = $('toast');
+    t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
+    clearTimeout(t._h); t._h = setTimeout(() => { t.className = ''; }, err ? 5000 : 2500);
+  }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const normYaw = (y) => { y = Math.round(y * 1000) / 1000 % 360; return y < 0 ? y + 360 : y; };
+
+  function snapshot() {
+    const { rawBinary, ...rest } = S.bp;
+    return JSON.stringify(rest);
+  }
+  function pushUndo() {
+    S.undo.push(snapshot());
+    if (S.undo.length > 150) S.undo.shift();
+    S.redo = [];
+    setDirty(true);
+  }
+  function restore(snap) {
+    S.bp = JSON.parse(snap);
+    S.sel.clear();
+    setDirty(true);
+    refresh();
+  }
+  function undo() { if (!S.undo.length) return; S.redo.push(snapshot()); restore(S.undo.pop()); }
+  function redo() { if (!S.redo.length) return; S.undo.push(snapshot()); restore(S.redo.pop()); }
+
+  function setDirty(d) {
+    S.dirty = d;
+    $('docTitle').textContent = (S.dirty ? '● ' : '') + (S.bp ? (S.bp.header.shortDesc || '(sin nombre)') : '') + (S.name ? '  —  ' + S.name : '');
+  }
+
+  // ------------------------------------------------------------------ carga / guardado
+  async function loadText(text, name, handle) {
+    let bp;
+    try { bp = await BP.parse(text); } catch (e) { toast('No se pudo leer el blueprint: ' + e.message, true); return false; }
+    delete bp.rawBinary;
+    S.bp = bp; S.name = name || ''; S.fileHandle = handle || null; S.hits = null;
+    S.sel.clear(); S.undo = []; S.redo = [];
+    learnTemplates(bp);
+    setDirty(false);
+    fitView();
+    refresh();
+    if (!bp.hashOk) toast('Aviso: el hash no coincidía (se recalcula al guardar)', true);
+    else toast(`Abierto: ${bp.header.shortDesc || name} (${bp.buildings.length} edificios)`);
+    highlightLibrary();
+    return true;
+  }
+
+  function newBlueprint() {
+    if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return;
+    S.bp = BP.createEmpty('Nuevo blueprint'); S.hits = null;
+    S.name = ''; S.fileHandle = null; S.sel.clear(); S.undo = []; S.redo = [];
+    S.view = { cx: 10, cy: 5, scale: 24 };
+    setDirty(false); refresh(); highlightLibrary();
+  }
+
+  async function exportString() {
+    const c = JSON.parse(snapshot());
+    c.header.time = BP.nowTicks();
+    BP.normalize(c);
+    return BP.stringify(c);
+  }
+
+  async function copyCode() {
+    if (!S.bp) return;
+    const s = await exportString();
+    try {
+      await navigator.clipboard.writeText(s);
+      toast(`Código copiado (${s.length} caracteres). Pégalo en el juego.`);
+    } catch (e) {
+      $('codeText').value = s; $('dlgCode').showModal(); $('codeText').select();
+    }
+  }
+
+  function safeName(n) { return (n || 'blueprint').replace(/[\\/:*?"<>|]/g, '_').trim() || 'blueprint'; }
+
+  async function download() {
+    if (!S.bp) return;
+    const s = await exportString();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([s], { type: 'text/plain' }));
+    a.download = (S.name ? S.name.split('/').pop().replace(/\.txt$/i, '') : safeName(S.bp.header.shortDesc)) + '.txt';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  async function writeHandle(handle, text) {
+    const w = await handle.createWritable();
+    await w.write(text); await w.close();
+  }
+
+  async function save() {
+    if (!S.bp) return;
+    if (S.fileHandle && S.fileHandle.createWritable) {
+      try {
+        await writeHandle(S.fileHandle, await exportString());
+        setDirty(false); toast('Guardado en ' + S.name);
+        return;
+      } catch (e) { toast('No se pudo guardar: ' + e.message, true); return; }
+    }
+    return saveAs();
+  }
+
+  async function saveAs() {
+    if (!S.bp) return;
+    const text = await exportString();
+    if (S.dirHandle) {
+      let name = prompt('Nombre del archivo (se guardará en la carpeta abierta):', safeName(S.bp.header.shortDesc));
+      if (!name) return;
+      name = safeName(name).replace(/\.txt$/i, '') + '.txt';
+      try {
+        let exists = true;
+        try { await S.dirHandle.getFileHandle(name); } catch (e) { exists = false; }
+        if (exists && !confirm(`"${name}" ya existe. ¿Sobrescribir?`)) return;
+        const h = await S.dirHandle.getFileHandle(name, { create: true });
+        await writeHandle(h, text);
+        S.fileHandle = h; S.name = name; setDirty(false);
+        toast('Guardado como ' + name);
+        await scanDir();
+      } catch (e) { toast('No se pudo guardar: ' + e.message, true); }
+      return;
+    }
+    if (window.showSaveFilePicker) {
+      try {
+        const h = await window.showSaveFilePicker({
+          suggestedName: safeName(S.bp.header.shortDesc) + '.txt',
+          types: [{ description: 'Blueprint DSP', accept: { 'text/plain': ['.txt'] } }],
+        });
+        await writeHandle(h, text);
+        S.fileHandle = h; S.name = h.name; setDirty(false); toast('Guardado como ' + h.name);
+      } catch (e) { if (e.name !== 'AbortError') toast('No se pudo guardar: ' + e.message, true); }
+      return;
+    }
+    download();
+  }
+
+  async function openFile() {
+    if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return;
+    if (window.showOpenFilePicker) {
+      try {
+        const [h] = await window.showOpenFilePicker({ types: [{ description: 'Blueprint DSP', accept: { 'text/plain': ['.txt'] } }] });
+        const f = await h.getFile();
+        await loadText(await f.text(), f.name, h);
+      } catch (e) { if (e.name !== 'AbortError') toast(e.message, true); }
+      return;
+    }
+    $('fileInput').click();
+  }
+
+  // ------------------------------------------------------------------ biblioteca (carpeta)
+  async function openDir() {
+    if (window.showDirectoryPicker) {
+      try {
+        S.dirHandle = await window.showDirectoryPicker({ id: 'dspbp', mode: 'readwrite' });
+        await scanDir();
+      } catch (e) { if (e.name !== 'AbortError') toast(e.message, true); }
+      return;
+    }
+    $('dirInput').click();
+  }
+
+  async function scanDir() {
+    const out = [];
+    async function walk(dir, prefix) {
+      for await (const [name, h] of dir.entries()) {
+        if (h.kind === 'directory') await walk(h, prefix + name + '/');
+        else if (/\.txt$/i.test(name)) out.push({ path: prefix + name, handle: h });
+      }
+    }
+    await walk(S.dirHandle, '');
+    out.sort((a, b) => a.path.localeCompare(b.path));
+    S.library = out;
+    $('libPath').textContent = '(' + S.dirHandle.name + ')';
+    renderLibrary();
+    learnFromLibrary();
+  }
+
+  async function learnFromLibrary() {
+    for (const e of S.library) {
+      try {
+        const text = e.file ? await e.file.text() : await (await e.handle.getFile()).text();
+        learnTemplates(await BP.parse(text));
+      } catch (err) { /* archivo no válido */ }
+    }
+  }
+
+  function renderLibrary() {
+    const el = $('library');
+    if (!S.library.length) { el.innerHTML = '<p class="muted small">No hay archivos .txt en la carpeta.</p>'; return; }
+    let html = '', lastDir = null;
+    for (let i = 0; i < S.library.length; i++) {
+      const p = S.library[i].path;
+      const dir = p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '';
+      if (dir !== lastDir) { if (dir) html += `<div class="lib-dir">📁 ${esc(dir)}</div>`; lastDir = dir; }
+      html += `<div class="lib-item" data-i="${i}" title="${esc(p)}" style="padding-left:${dir ? 16 : 6}px">${esc(p.split('/').pop().replace(/\.txt$/i, ''))}</div>`;
+    }
+    el.innerHTML = html;
+    highlightLibrary();
+  }
+  function highlightLibrary() {
+    document.querySelectorAll('.lib-item').forEach((d) => {
+      const e = S.library[+d.dataset.i];
+      d.classList.toggle('active', !!e && (e.handle ? e.handle === S.fileHandle : e.path === S.name));
+    });
+  }
+  $('library').addEventListener('click', async (ev) => {
+    const d = ev.target.closest('.lib-item'); if (!d) return;
+    if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return;
+    const e = S.library[+d.dataset.i];
+    const text = e.file ? await e.file.text() : await (await e.handle.getFile()).text();
+    await loadText(text, e.path, e.handle || null);
+  });
+
+  // ------------------------------------------------------------------ paleta
+  // Paleta: grupos del menú de construcción del juego, plegables (se recuerda cuáles están cerrados)
+  let palClosed = new Set();
+  try { palClosed = new Set(JSON.parse(localStorage.getItem('dspbp.palClosed') || '[]')); } catch (e) { /* sin almacenamiento */ }
+  function renderPalette() {
+    const q = $('paletteSearch').value.trim().toLowerCase();
+    let html = '';
+    for (const g of IT.MENU) {
+      const list = g.ids.map((id) => IT.BUILDINGS[id]).filter((b) => b &&
+        (!q || b.name.toLowerCase().includes(q) || b.en.toLowerCase().includes(q) || String(b.id).includes(q)));
+      if (!list.length) continue;
+      const open = q || !palClosed.has(g.key);
+      html += `<div class="pal-cat${open ? ' open' : ''}" data-group="${g.key}"><span class="caret">${open ? '▾' : '▸'}</span>${esc(g.name)}<span class="n">${list.length}</span></div>`;
+      if (!open) continue;
+      for (const b of list) {
+        const ok = !!S.templates[b.id];
+        const active = S.placeItem === b.id && S.tool !== 'select' && S.tool !== 'paste';
+        const icon = b.icon ? `<img class="pal-icon" src="${b.icon}" alt="">` : `<span class="pal-swatch" style="background:${BELT_COLORS[b.id] || (IT.CATS[b.cat] || {}).color}"></span>`;
+        html += `<div class="pal-item${ok ? '' : ' disabled'}${active ? ' active' : ''}" data-id="${b.id}"
+          title="${esc(b.name)} (${b.id})${ok ? '' : ' · modelo desconocido: abre algún blueprint que lo contenga'}">
+          ${icon}<span class="pal-name">${esc(b.en)}</span></div>`;
+      }
+    }
+    $('palette').innerHTML = html || '<p class="muted small">Sin resultados</p>';
+  }
+
+  $('paletteSearch').addEventListener('input', renderPalette);
+  $('palette').addEventListener('click', (ev) => {
+    const cat = ev.target.closest('.pal-cat');
+    if (cat) {
+      const k = cat.dataset.group;
+      palClosed.has(k) ? palClosed.delete(k) : palClosed.add(k);
+      try { localStorage.setItem('dspbp.palClosed', JSON.stringify([...palClosed])); } catch (e) { /* ignorar */ }
+      renderPalette(); return;
+    }
+    const d = ev.target.closest('.pal-item'); if (!d || d.classList.contains('disabled')) return;
+    const id = +d.dataset.id;
+    if (!S.bp) newBlueprint();
+    setTool(BP.BELTS.has(id) ? 'belt' : BP.SORTERS.has(id) ? 'sorter' : 'place', id);
+  });
+
+  function setTool(tool, item) {
+    S.tool = tool; S.placeItem = item || null; S.drag = null;
+    document.querySelectorAll('#toolbar .tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === tool));
+    const hints = {
+      select: 'Clic: seleccionar · Ctrl: añadir · Mayús+clic: copiar el edificio (arrastra para ponerlo en fila) · Arrastrar: mover/selección por caja · Doble clic en cinta: toda la línea · Botón derecho/central: desplazar',
+      place: `Colocando ${IT.itemName(item)} · R: girar${item === 2020 ? ` · Tab: variante (${(SPLIT[S.splitModel] || {}).name})` : ''} · Esc: terminar`,
+      belt: `Cinta ${IT.itemName(item)} a nivel ${curLevel()} · Arrastra para trazar · +/- cambia la altura (también a mitad de trazado: sube o baja en esa casilla) · R: el codo empieza por el otro lado · Acaba en una flecha para entrar en un divisor, estación… · Esc: terminar`,
+      paste: 'Pegando · R: girar · Clic: colocar, arrastrar: varias en fila (las que chocan se saltan) · Mayús: seguir pegando · Esc: cancelar',
+      sorter: `${IT.itemName(item)} · Arrastra desde el origen (cinta o hueco) hasta el destino · Los puntos son los huecos · Esc: terminar`,
+    };
+    $('toolHint').textContent = hints[tool] || '';
+    $('canvas').style.cursor = tool === 'select' ? 'default' : 'crosshair';
+    renderPalette();
+    requestDraw();
+  }
+  document.querySelectorAll('#toolbar .tool').forEach((b) => b.addEventListener('click', () => setTool(b.dataset.tool)));
+
+  // ------------------------------------------------------------------ lienzo
+  const canvas = $('canvas');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0, DPR = 1, drawPending = false;
+
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    DPR = window.devicePixelRatio || 1;
+    W = r.width; H = r.height;
+    canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+    requestDraw();
+  }
+  new ResizeObserver(resize).observe($('canvasWrap'));
+
+  const w2s = (x, y) => [(x - S.view.cx) * S.view.scale + W / 2, H / 2 - (y - S.view.cy) * S.view.scale];
+  const s2w = (px, py) => [(px - W / 2) / S.view.scale + S.view.cx, (H / 2 - py) / S.view.scale + S.view.cy];
+
+  function requestDraw() {
+    if (drawPending) return;
+    drawPending = true;
+    requestAnimationFrame(() => { drawPending = false; draw(); });
+  }
+
+  function bounds(list) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const b of list) {
+      minX = Math.min(minX, b.x); maxX = Math.max(maxX, b.x);
+      minY = Math.min(minY, b.y); maxY = Math.max(maxY, b.y);
+    }
+    return { minX, minY, maxX, maxY };
+  }
+
+  function fitView() {
+    if (!S.bp || !S.bp.buildings.length) { S.view = { cx: 10, cy: 5, scale: 24 }; requestDraw(); return; }
+    const bb = bounds(S.bp.buildings);
+    const w = bb.maxX - bb.minX + 6, h = bb.maxY - bb.minY + 6;
+    S.view.cx = (bb.minX + bb.maxX) / 2; S.view.cy = (bb.minY + bb.maxY) / 2;
+    S.view.scale = Math.max(2, Math.min(60, Math.min(W / w, H / h)));
+    requestDraw();
+  }
+
+  const GEO = window.DSPGeometry || {};
+  const COL = window.DSPCollision.make(GEO, IT);
+  const SPLIT = window.DSPSplitter || {};
+
+  // ------------------------------------------------------------------ alturas
+  // z de las cintas en niveles (0 suelo, 1 elevada…). Los edificios apilados (distribuidor sobre almacén) usan z real.
+  const levelOf = (b) => Math.max(0, Math.round(b.z || 0));
+  const curLevel = () => (S.level === 'all' ? 0 : S.level);
+  const dimmed = (b) => S.level !== 'all' && (isBelt(b) || b.z > 0.5 || S.level > 0) && levelOf(b) !== S.level;
+  function setLevel(l) {
+    S.level = l;
+    $('levelSel').value = String(l);
+    if (S.tool === 'belt') setTool('belt', S.placeItem); else requestDraw();
+  }
+
+  // ------------------------------------------------------------------ divisor
+  const SIDE = { N: [0, 1], E: [1, 0], S: [0, -1], W: [-1, 0] };
+  const BELT_PORTS = window.DSPBeltPorts || {};
+  const STACK = window.DSPStack || {};
+  // Puertos de cinta de un edificio en el mundo: { slot, pos:[x,y], dir:[dx,dy] hacia fuera, level }
+  function beltPorts(b) {
+    let list = BELT_PORTS[b.itemId];
+    if (b.itemId === 2020) {
+      const v = SPLIT[b.modelIndex];
+      list = v ? v.ports.map(([slot, side, level]) => [slot, SIDE[side][0] * 0.2, SIDE[side][1] * 0.2, side, level]) : null;
+    }
+    if (!list) return [];
+    const base = Math.round(b.z || 0);
+    return list.map(([slot, lx, ly, side, level]) => {
+      const [sx, sy] = SIDE[side];
+      const w = toWorld(b, sx, sy);
+      return { b, slot, pos: toWorld(b, lx, ly), dir: [Math.round(w[0] - b.x), Math.round(w[1] - b.y)], level: base + level };
+    });
+  }
+  // Puerto en la casilla `cell` al nivel L: de salida si la cinta avanza en `dir` hacia fuera,
+  // de entrada si avanza hacia dentro (dir opuesto al lado del puerto).
+  function portAt(cell, dir, entering, L) {
+    for (const b of S.bp.buildings) {
+      if (isBelt(b) || isSorter(b) || Math.abs(b.x - cell[0]) > 4 || Math.abs(b.y - cell[1]) > 4) continue;
+      for (const p of beltPorts(b)) {
+        if (p.level !== L || Math.round(p.pos[0]) !== cell[0] || Math.round(p.pos[1]) !== cell[1]) continue;
+        const k = entering ? -1 : 1;
+        if (p.dir[0] === dir[0] * k && p.dir[1] === dir[1] * k) return p;
+      }
+    }
+    return null;
+  }
+  // ¿Hay algún puerto en esta casilla (en cualquier sentido)? Para cortar el camino ahí.
+  const portCell = (cell, L) => S.bp.buildings.some((b) => !isBelt(b) && !isSorter(b) &&
+    Math.abs(b.x - cell[0]) <= 4 && Math.abs(b.y - cell[1]) <= 4 &&
+    beltPorts(b).some((p) => p.level === L && Math.round(p.pos[0]) === cell[0] && Math.round(p.pos[1]) === cell[1]));
+
+  // ------------------------------------------------------------------ apilado
+  // Edificio más alto en la posición (x, y) sobre el que se puede apilar itemId, o null
+  function stackBase(itemId, x, y) {
+    const rule = STACK[itemId]; if (!rule) return null;
+    let top = null;
+    for (const b of S.bp.buildings) {
+      if (isBelt(b) || isSorter(b) || Math.abs(b.x - x) > 0.3 || Math.abs(b.y - y) > 0.3) continue;
+      if (!top || b.z > top.z) top = b;
+    }
+    return top && rule.on.includes(top.itemId) ? top : null;
+  }
+  function applyStack(nb) {
+    const base = stackBase(nb.itemId, nb.x, nb.y);
+    if (!base) return false;
+    nb.z = nb.z2 = Math.round((base.z + STACK[nb.itemId].h) * 100) / 100;
+    nb.inputObjIdx = S.bp.buildings.indexOf(base);
+    return true;
+  }
+
+  function footprint(b) {
+    const g = GEO[b.itemId];
+    if (g) return { w: g.w, h: g.h, ox: g.ox || 0, oy: g.oy || 0, cut: g.cut || 0 };
+    const info = IT.buildingInfo(b.itemId);
+    return { w: info.w, h: info.h, ox: 0, oy: 0 };
+  }
+  // local (yaw 0, +y norte) -> mundo. El yaw gira en sentido horario.
+  function toWorld(b, lx, ly) {
+    const a = b.yaw * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+    return [b.x + lx * c + ly * s, b.y - lx * s + ly * c];
+  }
+  function toLocal(b, wx, wy) {
+    const a = b.yaw * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+    const dx = wx - b.x, dy = wy - b.y;
+    return [dx * c - dy * s, dx * s + dy * c];
+  }
+  // Huecos de clasificador de un edificio en coordenadas de mundo
+  function slotsOf(b) {
+    const g = GEO[b.itemId];
+    if (!g || !g.slots) return [];
+    return g.slots.map((p, i) => (p ? { slot: i, pos: toWorld(b, p[0], p[1]) } : null)).filter(Boolean);
+  }
+
+  // Dibuja un edificio. get(idx) resuelve el destino de conexiones.
+  function drawBuilding(b, o) {
+    const s = S.view.scale;
+    const ox = o.ox || 0, oy = o.oy || 0;
+    const [px, py] = w2s(b.x + ox, b.y + oy);
+    const info = IT.buildingInfo(b.itemId);
+    const cat = IT.CATS[info.cat] || IT.CATS.assembly;
+    ctx.globalAlpha = o.alpha || 1;
+
+    if (isBelt(b)) {
+      const color = BELT_COLORS[b.itemId] || cat.color;
+      const t = b.outputObjIdx >= 0 ? o.get(b.outputObjIdx) : null;
+      // dos pasadas: primero todos los tramos, luego flechas (si no, el tramo siguiente tapa la flecha)
+      const pass = o.pass || 'all';
+      const up = levelOf(b) > 0;
+      if (pass !== 'arrow') {
+      const path = () => {
+        ctx.beginPath(); ctx.moveTo(px, py);
+        if (t && isBelt(t)) {
+          const tm = o.offsetOf(t);
+          const [tx, ty] = w2s(t.x + tm[0], t.y + tm[1]);
+          ctx.lineTo(tx, ty);
+        } else {
+          const a = b.yaw * Math.PI / 180;
+          ctx.lineTo(px + Math.sin(a) * s * 0.45, py - Math.cos(a) * s * 0.45);
+        }
+      };
+      ctx.lineCap = 'round';
+      if (up) {
+        // cinta elevada: funda oscura con borde claro y más estrecha, para que se vea pasar por encima
+        ctx.strokeStyle = 'rgba(230,236,245,.85)'; ctx.lineWidth = Math.max(3, s * 0.5 + 3); path(); ctx.stroke();
+        ctx.strokeStyle = '#0f1218'; ctx.lineWidth = Math.max(2.5, s * 0.5 + 1); path(); ctx.stroke();
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = up ? Math.max(1.2, s * 0.32) : Math.max(1.5, s * 0.5);
+      path(); ctx.stroke();
+      }
+      if (pass === 'line') { ctx.globalAlpha = 1; return; }
+      // subida / bajada: dos cintas en la misma casilla a distinta altura
+      if (t && isBelt(t) && Math.hypot(t.x - b.x, t.y - b.y) < 0.15 && levelOf(t) !== levelOf(b)) {
+        const k = Math.max(5, s * 0.36), goingUp = levelOf(t) > levelOf(b);
+        ctx.fillStyle = '#0f1218'; ctx.strokeStyle = '#e6ecf5'; ctx.lineWidth = 1.5;
+        ctx.fillRect(px - k, py - k, k * 2, k * 2); ctx.strokeRect(px - k, py - k, k * 2, k * 2);
+        ctx.fillStyle = color; ctx.font = `bold ${Math.round(k * 1.1)}px Segoe UI`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(`${goingUp ? '▲' : '▼'}${levelOf(t)}`, px, py + 1);
+        ctx.globalAlpha = 1; return;
+      }
+      // Flecha de dirección: hacia la cinta siguiente si está al lado; si no, según la orientación
+      let dx, dy;
+      const tm = t ? o.offsetOf(t) : null;
+      const vx = t ? t.x + tm[0] - b.x - ox : 0, vy = t ? t.y + tm[1] - b.y - oy : 0;
+      if (t && isBelt(t) && Math.hypot(vx, vy) > 0.1 && Math.hypot(vx, vy) < 2.5) {
+        const l = Math.hypot(vx, vy); dx = vx / l; dy = -vy / l;
+      } else {
+        const a = b.yaw * Math.PI / 180; dx = Math.sin(a); dy = -Math.cos(a);
+      }
+      // a poco zoom, solo una flecha de cada pocas cintas para no saturar
+      const every = s > 8 ? 1 : s > 4 ? 3 : 6;
+      const isEnd = !t || !isBelt(t);
+      if (s > 2.5 && (isEnd || (Math.round(b.x) + Math.round(b.y)) % every === 0)) {
+        const k = Math.max(2.5, s * 0.2);
+        const cx = px + dx * k * 0.3, cy = py + dy * k * 0.3;
+        ctx.strokeStyle = 'rgba(15,18,24,.85)'; ctx.lineWidth = Math.max(1.2, s * 0.1);
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx - dx * k - dy * k, cy - dy * k + dx * k);
+        ctx.lineTo(cx, cy);
+        ctx.lineTo(cx - dx * k + dy * k, cy - dy * k - dx * k);
+        ctx.stroke();
+      }
+      if (o.selected) {
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+        ctx.strokeRect(px - s * 0.45, py - s * 0.45, s * 0.9, s * 0.9);
+      }
+      if (S.showLabels && b.parameters.length && b.parameters[0] > 0 && s > 12) {
+        ctx.fillStyle = '#fff'; ctx.font = `${Math.max(9, s * 0.35)}px Segoe UI`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.fillText(shortName(IT.itemName(b.parameters[0])), px, py - s * 0.35);
+      }
+    } else if (isSorter(b)) {
+      const [qx, qy] = w2s(b.x2 + ox, b.y2 + oy);
+      const sc = o.selected ? '#fff' : (BELT_COLORS[b.itemId] || cat.color);
+      // contorno oscuro para que se distinga sobre cintas del mismo color
+      ctx.strokeStyle = 'rgba(15,18,24,.8)'; ctx.lineCap = 'round';
+      ctx.lineWidth = Math.max(2.5, s * 0.13 + 2);
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(qx, qy); ctx.stroke();
+      ctx.strokeStyle = sc;
+      ctx.lineWidth = Math.max(1.5, s * 0.13);
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(qx, qy); ctx.stroke();
+      const ang = Math.atan2(qy - py, qx - px), k = Math.max(4, s * 0.3);
+      ctx.fillStyle = sc;
+      ctx.beginPath();
+      ctx.moveTo(qx + Math.cos(ang) * k * 0.4, qy + Math.sin(ang) * k * 0.4);
+      ctx.lineTo(qx - Math.cos(ang - 0.6) * k, qy - Math.sin(ang - 0.6) * k);
+      ctx.lineTo(qx - Math.cos(ang + 0.6) * k, qy - Math.sin(ang + 0.6) * k);
+      ctx.fill();
+    } else {
+      const fp = footprint(b);
+      // el icono del edificio (wiki) sustituye a los sprites recortados de capturas
+      const hasIcon = !!info.icon;
+      const sprite = hasIcon ? null : spriteFor(b.itemId);
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(b.yaw * Math.PI / 180);
+      const w = fp.w * s, h = fp.h * s;
+      ctx.translate(fp.ox * s, -fp.oy * s); // centro de la huella (puede no coincidir con la posición)
+      if (b.itemId === 2020 && SPLIT[b.modelIndex]) {
+        drawSplitter(SPLIT[b.modelIndex], s, o.selected);
+      } else if (sprite && s > 3) {
+        const sw = sprite.w * s, sh = sprite.h * s;
+        ctx.translate((sprite.ox - fp.ox) * s, -(sprite.oy - fp.oy) * s);
+        ctx.drawImage(sprite.img, -sw / 2, -sh / 2, sw, sh);
+        if (TIER[b.itemId] && !o.selected) {
+          ctx.strokeStyle = TIER[b.itemId]; ctx.lineWidth = Math.max(1.5, s * 0.1);
+          roundRect(-sw / 2, -sh / 2, sw, sh, Math.min(sw, sh) * 0.11); ctx.stroke();
+        }
+        if (o.selected) {
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
+          roundRect(-sw / 2, -sh / 2, sw, sh, Math.min(sw, sh) * 0.11); ctx.stroke();
+        }
+      } else if (b.itemId === 2201 && !hasIcon) {
+        drawTesla(s, cat.color, o.selected);
+      } else {
+        // cuerpo oscuro con borde del color de la categoría (o del nivel, en ensambladoras)
+        const col = TIER[b.itemId] || cat.color;
+        const r = Math.min(w, h) * 0.14;
+        ctx.fillStyle = '#222935';
+        const body = () => (fp.cut ? octagon(w, h, fp.cut * s) : roundRect(-w / 2, -h / 2, w, h, r));
+        body(); ctx.fill();
+        ctx.fillStyle = col + '40';
+        roundRect(-w / 2 + s * 0.25, -h / 2 + s * 0.25, w - s * 0.5, h - s * 0.5, r * 0.7); ctx.fill();
+        ctx.strokeStyle = o.selected ? '#fff' : col;
+        ctx.lineWidth = o.selected ? 2.5 : Math.max(1, s * 0.08);
+        body(); ctx.stroke();
+        // marca de orientación (lado frontal)
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.3, -h / 2 + s * 0.05); ctx.lineTo(s * 0.3, -h / 2 + s * 0.05); ctx.lineTo(0, -h / 2 + s * 0.35);
+        ctx.fill();
+      }
+      ctx.restore();
+      // icono del edificio en el centro (sin girar) y el de la receta pequeño abajo a la derecha
+      const [cx, cy] = w2s(...toWorld(b, fp.ox, fp.oy).map((v, i) => v + (i ? oy : ox)));
+      const iconDrawn = hasIcon && b.itemId !== 2020 && drawIcons(b, fp, cx, cy, s);
+      if (!iconDrawn && S.showLabels && s > 7 && b.itemId !== 2201 && b.itemId !== 2020) {
+        const [lx, ly] = w2s(...toWorld(b, fp.ox, fp.oy).map((v, i) => v + (i ? oy : ox)));
+        drawLabel(b, info, lx, ly, s, !!sprite);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  // Sprites recortados de capturas del juego (js/sprites.js)
+  const SPRITES = {};
+  for (const [id, d] of Object.entries(window.DSPSprites || {})) {
+    const img = new Image();
+    img.onload = () => {
+      SPRITES[id] = { img, w: d.w || d.size, h: d.h || d.size, ox: d.ox || 0, oy: d.oy || 0 };
+      requestDraw();
+    };
+    img.src = d.src;
+  }
+  // Ensambladoras: misma forma, color por nivel (amarillo, verde, azul), como cintas y clasificadores
+  const TIER = { 2303: '#d1b13e', 2304: '#58c46a', 2305: '#4f9dff' };
+  const SPRITE_ALIAS = { 2304: 2303, 2305: 2303, 2318: 2303 };
+  function tint(img, color) {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0);
+    g.globalCompositeOperation = 'color'; g.fillStyle = color; g.fillRect(0, 0, c.width, c.height);
+    g.globalCompositeOperation = 'destination-in'; g.drawImage(img, 0, 0);
+    return c;
+  }
+  function spriteFor(id) {
+    if (SPRITES[id]) return SPRITES[id];
+    const base = SPRITES[SPRITE_ALIAS[id]];
+    if (!base) return null;
+    SPRITES[id] = { ...base, img: TIER[id] ? tint(base.img, TIER[id]) : base.img };
+    return SPRITES[id];
+  }
+  // Iconos de edificio (wiki): para los que no tienen sprite y en la paleta
+  const BICON = {};
+  function buildingIcon(id) {
+    const src = IT.buildingInfo(id).icon; if (!src) return null;
+    if (!BICON[id]) { const im = new Image(); im.onload = requestDraw; im.src = src; BICON[id] = im; }
+    return BICON[id].complete && BICON[id].naturalWidth ? BICON[id] : null;
+  }
+
+  // Divisor (en coordenadas locales ya giradas): cuerpo de 1 casilla y sus puertos.
+  // Puerto de suelo: muesca del color del divisor. Puerto elevado: círculo blanco con borde.
+  function drawSplitter(v, s, selected) {
+    const h = s * 0.45, col = IT.CATS.logistics.color;
+    ctx.fillStyle = '#222935'; ctx.strokeStyle = selected ? '#fff' : col; ctx.lineWidth = selected ? 2.5 : Math.max(1, s * 0.07);
+    roundRect(-h, -h, h * 2, h * 2, h * 0.25); ctx.fill(); ctx.stroke();
+    for (const [, side, level] of v.ports) {
+      const [lx, ly] = SIDE[side], dx = lx, dy = -ly;
+      if (level === 0) {
+        ctx.fillStyle = col;
+        const cx = dx * h * 0.78, cy = dy * h * 0.78, a = h * 0.42, b = h * 0.16;
+        ctx.fillRect(cx - (dx ? b : a), cy - (dy ? b : a), (dx ? b : a) * 2, (dy ? b : a) * 2);
+      } else {
+        ctx.beginPath(); ctx.arc(dx * h * 0.55, dy * h * 0.55, Math.max(2, h * 0.24), 0, Math.PI * 2);
+        ctx.fillStyle = '#e6ecf5'; ctx.fill(); ctx.strokeStyle = '#0f1218'; ctx.lineWidth = 1; ctx.stroke();
+      }
+    }
+    if (s > 16) {
+      ctx.fillStyle = '#e6ecf5'; ctx.font = `bold ${Math.round(s * 0.32)}px Segoe UI`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(v.short, 0, 1);
+    }
+  }
+
+  function drawTesla(s, color, selected) {
+    const r = s * 0.42;
+    ctx.fillStyle = '#222935';
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = selected ? '#fff' : color; ctx.lineWidth = selected ? 2.5 : Math.max(1, s * 0.08);
+    ctx.stroke();
+    if (s > 10) {
+      ctx.fillStyle = '#f4d35e';
+      ctx.beginPath();
+      ctx.moveTo(r * 0.15, -r * 0.7); ctx.lineTo(-r * 0.35, r * 0.1); ctx.lineTo(0, r * 0.1);
+      ctx.lineTo(-r * 0.15, r * 0.7); ctx.lineTo(r * 0.35, -r * 0.1); ctx.lineTo(0, -r * 0.1);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+
+  // Etiqueta: abreviatura del edificio y receta. Con sprite, solo la receta en una pastilla.
+  // Icono del edificio ajustado a su huella y, si tiene receta, el dibujo de la receta en la esquina inferior derecha
+  function drawIcons(b, fp, cx, cy, s) {
+    const img = buildingIcon(b.itemId);
+    if (!img || s < 3) return false;
+    const side = Math.min(fp.w, fp.h) * s;
+    const k = side * (b.itemId === 2201 ? 1.1 : 0.85);
+    ctx.drawImage(img, cx - k / 2, cy - k / 2, k, k);
+    const rimg = b.recipeId ? iconImg(b.recipeId) : null;
+    if (rimg && s > 4) {
+      const r = Math.max(10, side * 0.42), rx = cx + side / 2 - r * 0.62, ry = cy + side / 2 - r * 0.62;
+      ctx.fillStyle = 'rgba(10,12,18,.75)';
+      ctx.beginPath(); ctx.arc(rx, ry, r * 0.6, 0, Math.PI * 2); ctx.fill();
+      ctx.drawImage(rimg, rx - r / 2, ry - r / 2, r, r);
+    }
+    return true;
+  }
+
+  function drawLabel(b, info, px, py, s, hasSprite) {
+    const fs = Math.max(8, Math.min(s * 0.42, 15));
+    const rec = b.recipeId ? shortName(IT.RECIPES[b.recipeId] || '#' + b.recipeId) : '';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // dibujo de la receta sobre el edificio
+    const img = b.recipeId && s > 4 ? iconImg(b.recipeId) : null;
+    if (img) {
+      const k = Math.max(12, Math.min(s * 1.3, 56));
+      ctx.fillStyle = 'rgba(10,12,18,.72)';
+      ctx.beginPath(); ctx.arc(px, py, k * 0.6, 0, Math.PI * 2); ctx.fill();
+      ctx.drawImage(img, px - k / 2, py - k / 2, k, k);
+      if (!hasSprite && s > 10) { ctx.fillStyle = '#fff'; ctx.font = `600 ${fs * 0.85}px Segoe UI`; ctx.fillText(info.short, px, py - k * 0.6 - fs * 0.5); }
+      return;
+    }
+    if (hasSprite) {
+      if (!rec || s < 10) return;
+      ctx.font = `600 ${fs * 0.85}px Segoe UI`;
+      const tw = ctx.measureText(rec).width + 8, th = fs * 1.15, y = py + s * 0.85;
+      ctx.fillStyle = 'rgba(10,12,18,.8)';
+      roundRect(px - tw / 2, y - th / 2, tw, th, th / 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.fillText(rec, px, y);
+      return;
+    }
+    const bimg = !hasSprite && s > 6 ? buildingIcon(b.itemId) : null;
+    if (bimg && !rec) {
+      const fpb = footprint(b), k = Math.max(12, Math.min(Math.min(fpb.w, fpb.h) * s * 0.6, 64));
+      ctx.drawImage(bimg, px - k / 2, py - k / 2, k, k);
+      return;
+    }
+    ctx.fillStyle = '#fff';
+    ctx.font = `600 ${fs}px Segoe UI`;
+    if (rec && s > 10) {
+      ctx.fillText(info.short, px, py - fs * 0.6);
+      ctx.font = `${fs * 0.85}px Segoe UI`;
+      ctx.fillStyle = '#cfd6e4';
+      ctx.fillText(rec, px, py + fs * 0.55);
+    } else ctx.fillText(info.short, px, py);
+  }
+
+  // Rectángulo con las esquinas recortadas (base de las estaciones)
+  function octagon(w, h, c) {
+    const x = w / 2, y = h / 2;
+    ctx.beginPath();
+    ctx.moveTo(-x + c, -y); ctx.lineTo(x - c, -y); ctx.lineTo(x - c, -y + c); ctx.lineTo(x, -y + c);
+    ctx.lineTo(x, y - c); ctx.lineTo(x - c, y - c); ctx.lineTo(x - c, y); ctx.lineTo(-x + c, y);
+    ctx.lineTo(-x + c, y - c); ctx.lineTo(-x, y - c); ctx.lineTo(-x, -y + c); ctx.lineTo(-x + c, -y + c);
+    ctx.closePath();
+  }
+  function shortName(n) { return n.length > 12 ? n.slice(0, 11) + '…' : n; }
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+
+  function order(b) { return isSorter(b) ? 2 : isBelt(b) ? 1 : 0; }
+
+  function draw() {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.fillStyle = '#0f1218'; ctx.fillRect(0, 0, W, H);
+    drawGrid();
+    if (!S.bp) {
+      ctx.fillStyle = '#8892a6'; ctx.font = '16px Segoe UI'; ctx.textAlign = 'center';
+      ctx.fillText('Abre un blueprint, pega un código o crea uno nuevo', W / 2, H / 2);
+      return;
+    }
+    const bs = S.bp.buildings;
+    const moving = S.drag && S.drag.type === 'move' ? S.drag : null;
+    const offsetOf = (b) => (moving && (S.sel.has(b) || moving.carry.has(b)) ? [moving.dx, moving.dy] : [0, 0]);
+    const get = (i) => bs[i];
+
+    // contorno del área exportada
+    if (bs.length) {
+      const bb = bounds(bs);
+      const [x0, y0] = w2s(Math.round(bb.minX) - 0.5, Math.round(bb.maxY) + 0.5);
+      const [x1, y1] = w2s(Math.round(bb.maxX) + 0.5, Math.round(bb.minY) - 0.5);
+      ctx.strokeStyle = 'rgba(240,160,48,.35)'; ctx.setLineDash([6, 4]); ctx.lineWidth = 1;
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0); ctx.setLineDash([]);
+    }
+
+    const margin = 8;
+    const [vx0, vy1] = s2w(0, 0), [vx1, vy0] = s2w(W, H);
+    const visible = bs.filter((b) => !(b.x < vx0 - margin || b.x > vx1 + margin || b.y < vy0 - margin || b.y > vy1 + margin));
+    const drawList = (list, pass) => list.forEach((b) => {
+      const [ox, oy] = offsetOf(b);
+      drawBuilding(b, { ox, oy, selected: S.sel.has(b), get, offsetOf, pass, alpha: dimmed(b) ? 0.22 : 1 });
+    });
+    // de abajo arriba: cintas del suelo, edificios, cintas elevadas (por nivel), edificios apilados, clasificadores
+    const belts = visible.filter(isBelt);
+    const maxLevel = belts.reduce((m, b) => Math.max(m, levelOf(b)), 0);
+    const ground = belts.filter((b) => levelOf(b) === 0);
+    drawList(ground, 'line'); drawList(ground, 'arrow');
+    drawList(visible.filter((b) => order(b) === 0 && b.z <= 0.5));
+    for (let l = 1; l <= maxLevel; l++) {
+      const lv = belts.filter((b) => levelOf(b) === l);
+      drawList(lv, 'line'); drawList(lv, 'arrow');
+    }
+    drawList(visible.filter((b) => order(b) === 0 && b.z > 0.5));
+    drawList(visible.filter(isSorter));
+
+    // choques: los del blueprint (salvo lo que se está moviendo) y los de los fantasmas
+    if (moving && (moving.dx || moving.dy)) {
+      const moved = [...S.sel].map((b) => ({ ...b, x: b.x + moving.dx, y: b.y + moving.dy }));
+      drawHits(COL.find(moved, bs.filter((b) => !S.sel.has(b) && !moving.carry.has(b))));
+    } else if (S.hits) {
+      drawHits(S.hits);
+    }
+
+    if (S.showLinks) {
+      ctx.strokeStyle = 'rgba(79,195,247,.6)'; ctx.lineWidth = 1;
+      for (const b of bs) {
+        if (isBelt(b) || b.outputObjIdx < 0) continue;
+        const t = bs[b.outputObjIdx]; if (!t) continue;
+        const [ox1, oy1] = offsetOf(b), [ox2, oy2] = offsetOf(t);
+        const [ax, ay] = w2s((isSorter(b) ? b.x2 : b.x) + ox1, (isSorter(b) ? b.y2 : b.y) + oy1), [cx, cy] = w2s(t.x + ox2, t.y + oy2);
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(cx, cy); ctx.stroke();
+      }
+    }
+
+    // fantasmas
+    const gx = Math.round(S.mouse.wx), gy = Math.round(S.mouse.wy);
+    if (S.mouse.inside && S.tool === 'place' && S.placeItem) {
+      const g = makeBuilding(S.placeItem, gx, gy, S.ghostRot * 90);
+      if (g && g.itemId === 2020) g.modelIndex = S.splitModel;
+      if (g) applyStack(g);
+      if (g) { drawBuilding(g, { alpha: 0.55, get: () => null, offsetOf: () => [0, 0] }); drawHits(COL.find([g], bs)); }
+    }
+    if (S.tool === 'belt' && S.placeItem) {
+      const cells = S.drag && S.drag.type === 'belt' ? beltPath(S.drag.start, [gx, gy]) : (S.mouse.inside ? [[gx, gy]] : []);
+      const ghosts = beltsFor(cells, S.placeItem);
+      for (const pass of ['line', 'arrow']) ghosts.forEach((g) => drawBuilding(g, { alpha: 0.6, get: (i) => ghosts[i], offsetOf: () => [0, 0], pass }));
+      drawHits(COL.find(ghosts, bs.filter((b) => !ghosts.some((g) => g.x === b.x && g.y === b.y))));
+    }
+    if (S.mouse.inside && S.tool === 'paste' && S.clip) {
+      const row = S.drag && S.drag.type === 'pasteRow' ? rowPositions(S.drag.start, [gx, gy]) : [[gx, gy]];
+      for (const [rx, ry] of row) {
+      const list = clipPlaced(rx, ry);
+      const sortedGhosts = [...list.filter((b) => order(b) === 0), ...list.filter(isBelt), ...list.filter(isSorter)];
+      for (const pass of ['line', 'arrow']) sortedGhosts.forEach((g) => {
+        if (pass === 'arrow' && !isBelt(g)) return;
+        drawBuilding(g, { alpha: 0.5, get: (i) => list[i], offsetOf: () => [0, 0], pass: isBelt(g) ? pass : undefined });
+      });
+      drawHits(COL.find(list, bs));
+      }
+    }
+    if (S.tool === 'belt') visible.forEach((b) => drawBeltPorts(b, true));
+    else if (S.view.scale > 6) visible.forEach((b) => { if (!isBelt(b) && !isSorter(b)) drawBeltPorts(b, false); });
+    drawStacks(visible);
+    // huecos: todos los visibles con la herramienta de clasificador, o los del edificio seleccionado
+    if (S.tool === 'sorter') {
+      visible.forEach((b) => drawSlots(b, false));
+      const hover = S.mouse.inside ? findAnchor(S.mouse.wx, S.mouse.wy, S.drag && S.drag.type === 'sorter' ? S.drag.start : null) : null;
+      if (S.drag && S.drag.type === 'sorter') {
+        const g = sorterGeometry(S.drag.start, hover || { kind: 'free', pos: [S.mouse.wx, S.mouse.wy] });
+        drawSorterPreview(g, !!hover);
+      }
+      if (hover) drawAnchor(hover);
+    } else if (S.tool === 'select' && S.sel.size === 1) {
+      drawSlots([...S.sel][0], false);
+    }
+    if (S.drag && S.drag.type === 'box') {
+      const d = S.drag;
+      ctx.fillStyle = 'rgba(79,195,247,.12)'; ctx.strokeStyle = 'rgba(79,195,247,.8)'; ctx.lineWidth = 1;
+      ctx.fillRect(d.sx0, d.sy0, S.mouse.sx - d.sx0, S.mouse.sy - d.sy0);
+      ctx.strokeRect(d.sx0, d.sy0, S.mouse.sx - d.sx0, S.mouse.sy - d.sy0);
+    }
+  }
+
+  // Puertos de cinta: flecha hacia fuera; brillante si están al nivel actual
+  // Dónde se engancha o entra la cinta: flechas en los puertos (divisor, estación, intercambiador…) y,
+  // en los edificios sin puertos pero con carril (torretas: fila de munición), una franja discontinua.
+  // Siempre visibles (tenues); resaltadas con la herramienta de cinta.
+  const LANES = (window.DSPCollision && window.DSPCollision.LANES) || {};
+  function drawBeltPorts(b, strong) {
+    const ports = beltPorts(b), lanes = LANES[b.itemId];
+    if (!ports.length && !lanes) return;
+    const s = S.view.scale, k = Math.max(3, s * 0.18), L = curLevel(), base = strong ? 1 : 0.5;
+    for (const p of ports) {
+      const [px, py] = w2s(p.pos[0], p.pos[1]), dx = p.dir[0], dy = -p.dir[1];
+      ctx.globalAlpha = base * (p.level === L || !strong ? 1 : 0.35);
+      ctx.fillStyle = p.level > 0 ? '#e6ecf5' : '#4fc3f7'; ctx.strokeStyle = '#0f1218'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(px + dx * k, py + dy * k);
+      ctx.lineTo(px - dx * k * 0.6 - dy * k, py - dy * k * 0.6 + dx * k);
+      ctx.lineTo(px - dx * k * 0.6 + dy * k, py - dy * k * 0.6 - dx * k);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    if (lanes && !ports.length) {
+      const fp = footprint(b);
+      ctx.globalAlpha = base;
+      ctx.strokeStyle = '#4fc3f7'; ctx.lineWidth = Math.max(2, s * 0.35); ctx.setLineDash([Math.max(3, s * 0.3), Math.max(3, s * 0.3)]);
+      for (const [axis, v] of lanes) {
+        const a1 = axis === 'y' ? toWorld(b, fp.ox - fp.w / 2 - 0.3, v) : toWorld(b, v, fp.oy - fp.h / 2 - 0.3);
+        const a2 = axis === 'y' ? toWorld(b, fp.ox + fp.w / 2 + 0.3, v) : toWorld(b, v, fp.oy + fp.h / 2 + 0.3);
+        const [x1, y1] = w2s(...a1), [x2, y2] = w2s(...a2);
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Pilas (almacenes, tanques, laboratorios…): insignia ×N sobre el de arriba
+  function drawStacks(list) {
+    const s = S.view.scale; if (s < 6) return;
+    const groups = new Map();
+    for (const b of list) {
+      if (isBelt(b) || isSorter(b)) continue;
+      const k = Math.round(b.x * 5) + ',' + Math.round(b.y * 5);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(b);
+    }
+    for (const g of groups.values()) {
+      if (g.length < 2) continue;
+      const top = g.reduce((a, b) => (b.z > a.z ? b : a));
+      const fp = footprint(top);
+      const [px, py] = w2s(top.x + fp.w / 2 - 0.3, top.y + fp.h / 2 - 0.3);
+      const txt = '×' + g.length, fs = Math.max(10, Math.min(s * 0.4, 16));
+      ctx.font = `bold ${fs}px Segoe UI`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const w = ctx.measureText(txt).width + 8;
+      ctx.fillStyle = '#f0a030'; roundRect(px - w / 2, py - fs * 0.65, w, fs * 1.3, fs * 0.4); ctx.fill();
+      ctx.fillStyle = '#0f1218'; ctx.fillText(txt, px, py + 1);
+    }
+  }
+
+  // Marca en rojo los cuerpos de colisión de cada pareja que choca
+  function drawHits(pairs) {
+    if (!pairs.length) return;
+    const seen = new Set();
+    ctx.fillStyle = 'rgba(224,85,85,.28)'; ctx.strokeStyle = '#ff5c5c'; ctx.lineWidth = 2;
+    for (const pair of pairs) for (const b of pair) {
+      if (seen.has(b)) continue; seen.add(b);
+      const k = COL.body(b); if (!k) continue;
+      ctx.beginPath();
+      if (k.r) {
+        const [cx, cy] = w2s(k.cx, k.cy);
+        ctx.arc(cx, cy, k.r * S.view.scale, 0, Math.PI * 2);
+      } else {
+        const [x0, y0] = w2s(k.cx - k.hw, k.cy + k.hh), [x1, y1] = w2s(k.cx + k.hw, k.cy - k.hh);
+        ctx.rect(x0, y0, x1 - x0, y1 - y0);
+      }
+      ctx.fill(); ctx.stroke();
+    }
+  }
+
+  function drawGrid() {
+    const s = S.view.scale;
+    const [x0, y1] = s2w(0, 0), [x1, y0] = s2w(W, H);
+    const lines = (step, color) => {
+      ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.beginPath();
+      for (let x = Math.floor(x0 / step) * step; x <= x1; x += step) {
+        const [px] = w2s(x - 0.5, 0); ctx.moveTo(Math.round(px) + 0.5, 0); ctx.lineTo(Math.round(px) + 0.5, H);
+      }
+      for (let y = Math.floor(y0 / step) * step; y <= y1; y += step) {
+        const [, py] = w2s(0, y - 0.5); ctx.moveTo(0, Math.round(py) + 0.5); ctx.lineTo(W, Math.round(py) + 0.5);
+      }
+      ctx.stroke();
+    };
+    if (s >= 6) lines(1, '#171c25');
+    lines(10, '#202734');
+    const [ox, oy] = w2s(0, 0);
+    ctx.fillStyle = '#3a4560'; ctx.beginPath(); ctx.arc(ox, oy, 3, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // ------------------------------------------------------------------ selección por clic
+  function pick(wx, wy) {
+    if (!S.bp) return null;
+    const bs = S.bp.buildings;
+    let best = null, bestOrder = -1, bestD = Infinity;
+    for (const b of bs) {
+      let hit = false, d = 0;
+      if (isSorter(b)) {
+        d = segDist(wx, wy, b.x, b.y, b.x2, b.y2); hit = d < 0.3;
+      } else if (isBelt(b)) {
+        d = Math.max(Math.abs(wx - b.x), Math.abs(wy - b.y)); hit = d < 0.5;
+      } else {
+        const fp = footprint(b);
+        const [lx, ly] = toLocal(b, wx, wy);
+        hit = Math.abs(lx - fp.ox) <= fp.w / 2 && Math.abs(ly - fp.oy) <= fp.h / 2;
+        d = Math.hypot(wx - b.x, wy - b.y);
+      }
+      if (!hit || dimmed(b)) continue;
+      const o = order(b) + (b.z > 0.5 ? 0.5 : 0);
+      if (o > bestOrder || (o === bestOrder && d < bestD)) { best = b; bestOrder = o; bestD = d; }
+    }
+    return best;
+  }
+  function segDist(px, py, ax, ay, bx, by) {
+    const vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy;
+    let t = l2 ? ((px - ax) * vx + (py - ay) * vy) / l2 : 0; t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - ax - t * vx, py - ay - t * vy);
+  }
+
+  // Selecciona la línea de cinta completa (siguiendo conexiones entre cintas)
+  function selectBeltLine(b) {
+    const bs = S.bp.buildings;
+    const prev = new Map();
+    bs.forEach((x, i) => { if (isBelt(x) && x.outputObjIdx >= 0) { const t = bs[x.outputObjIdx]; if (t && isBelt(t)) { if (!prev.has(t)) prev.set(t, []); prev.get(t).push(x); } } });
+    const stack = [b], seen = new Set();
+    while (stack.length) {
+      const x = stack.pop(); if (seen.has(x)) continue; seen.add(x);
+      const t = x.outputObjIdx >= 0 ? bs[x.outputObjIdx] : null;
+      if (t && isBelt(t)) stack.push(t);
+      (prev.get(x) || []).forEach((p) => stack.push(p));
+    }
+    seen.forEach((x) => S.sel.add(x));
+  }
+
+  // ------------------------------------------------------------------ creación de edificios
+  function newMagic() {
+    const b = S.bp && S.bp.buildings[0];
+    return b ? b.magic : -102;
+  }
+  function makeBuilding(itemId, x, y, yaw) {
+    const t = S.templates[itemId]; if (!t) return null;
+    const b = BP.newBuilding({
+      magic: newMagic(), itemId, modelIndex: t.modelIndex,
+      x, y, z: 0, yaw: normYaw(yaw), x2: x, y2: y, z2: 0, yaw2: normYaw(yaw),
+      parameters: (t.parameters || []).slice(),
+      outputToSlot: t.outputToSlot || 0, inputFromSlot: t.inputFromSlot || 0,
+      outputFromSlot: t.outputFromSlot || 0, inputToSlot: t.inputToSlot || 0,
+    });
+    if (BP.SORTERS.has(itemId)) {
+      const a = yaw * Math.PI / 180;
+      b.x2 = r2(x + Math.sin(a)); b.y2 = r2(y + Math.cos(a));
+    }
+    return b;
+  }
+
+  function placeBuilding(x, y) {
+    const b = makeBuilding(S.placeItem, x, y, S.ghostRot * 90);
+    if (!b) return;
+    if (b.itemId === 2020) b.modelIndex = S.splitModel;
+    const stacked = applyStack(b);
+    pushUndo();
+    b.index = S.bp.buildings.length;
+    S.bp.buildings.push(b);
+    S.sel.clear(); S.sel.add(b);
+    refresh();
+    if (stacked && S.bp.buildings.includes(b)) toast(`Apilado sobre ${IT.itemName(S.bp.buildings[b.inputObjIdx].itemId)} (altura ${b.z})`);
+  }
+
+  // Camino en L entre dos celdas
+  function beltPath(a, b) {
+    const cells = [];
+    let [x, y] = a;
+    const [tx, ty] = b;
+    cells.push([x, y]);
+    const horizFirst = (Math.abs(tx - x) >= Math.abs(ty - y)) !== S.beltFlip;
+    const stepX = () => { while (x !== tx) { x += Math.sign(tx - x); cells.push([x, y]); } };
+    const stepY = () => { while (y !== ty) { y += Math.sign(ty - y); cells.push([x, y]); } };
+    if (horizFirst) { stepX(); stepY(); } else { stepY(); stepX(); }
+    return cells;
+  }
+  const dirYaw = (dx, dy) => (dx > 0 ? 90 : dx < 0 ? 270 : dy > 0 ? 0 : 180);
+
+  // Genera cintas (fantasma) encadenadas por índice local
+  function beltsFor(cells, itemId) {
+    const list = [];
+    for (let i = 0; i < cells.length; i++) {
+      const [x, y] = cells[i];
+      let yaw;
+      if (i + 1 < cells.length) yaw = dirYaw(cells[i + 1][0] - x, cells[i + 1][1] - y);
+      else if (i > 0) yaw = dirYaw(x - cells[i - 1][0], y - cells[i - 1][1]);
+      else yaw = S.ghostRot * 90;
+      const b = makeBuilding(itemId, x, y, yaw);
+      if (!b) return [];
+      list.push(b);
+    }
+    list.forEach((b, i) => {
+      b.z = b.z2 = curLevel();
+      b.inputToSlot = 1;
+      if (i + 1 < list.length) { b.outputObjIdx = i + 1; b.outputToSlot = 1; }
+    });
+    return list;
+  }
+
+  // Cinta en la casilla a ese nivel; level = null -> a cualquier nivel salvo notLevel
+  function beltAt(x, y, level = 0, notLevel) {
+    for (const b of S.bp.buildings) {
+      if (!isBelt(b) || Math.abs(b.x - x) > 0.3 || Math.abs(b.y - y) > 0.3) continue;
+      if (level === null ? levelOf(b) !== notLevel : levelOf(b) === level) return b;
+    }
+    return null;
+  }
+  const hasInput = (t) => S.bp.buildings.some((b) => isBelt(b) && S.bp.buildings[b.outputObjIdx] === t);
+
+  // Crea una línea de cintas al nivel actual. Se engancha a:
+  //  - cintas del mismo nivel al principio y al final;
+  //  - cintas de otro nivel en la misma casilla (subida/bajada: dos cintas en la casilla, como en el juego);
+  //  - puertos de divisor (la cinta entra o sale a 0,2 del centro, al nivel del puerto).
+  // Las cintas de otro nivel en medio del camino se cruzan sin conectar.
+  function createBeltLine(cells) {
+    const itemId = S.placeItem, L = curLevel();
+    const bs = S.bp.buildings;
+    // salida desde un puerto (divisor, estación…) en la primera casilla
+    const startPort = cells.length > 1 ? portAt(cells[0], [cells[1][0] - cells[0][0], cells[1][1] - cells[0][1]], false, L) : null;
+    // un puerto más adelante corta el camino ahí y la cinta entra por él
+    let endPort = null;
+    for (let i = 1; i < cells.length; i++) {
+      if (!portCell(cells[i], L)) continue;
+      endPort = portAt(cells[i], [cells[i][0] - cells[i - 1][0], cells[i][1] - cells[i - 1][1]], true, L);
+      if (!endPort) { toast('Ese puerto no admite entrada por ese lado o a ese nivel', true); return; }
+      cells = cells.slice(0, i + 1); break;
+    }
+    if (cells.length > 1 && !startPort && portCell(cells[0], L)) { toast('Ese puerto no tiene salida por ese lado o a ese nivel', true); return; }
+    const created = [];
+    const add = (x, y, yaw) => {
+      const nb = makeBuilding(itemId, x, y, yaw);
+      nb.z = nb.z2 = L; nb.inputToSlot = 1;
+      nb.index = bs.length; bs.push(nb); created.push(nb);
+      return nb;
+    };
+    const link = (a, t) => {
+      a.outputObjIdx = bs.indexOf(t); a.outputToSlot = 1; a.inputToSlot = 1;
+      const dx = Math.round(t.x - a.x), dy = Math.round(t.y - a.y);
+      if (dx || dy) a.yaw = a.yaw2 = dirYaw(dx, dy);
+    };
+    const yawAt = (i) => {
+      const [x, y] = cells[i];
+      if (i + 1 < cells.length) return dirYaw(cells[i + 1][0] - x, cells[i + 1][1] - y);
+      if (i > 0) return dirYaw(x - cells[i - 1][0], y - cells[i - 1][1]);
+      return S.ghostRot * 90;
+    };
+    pushUndo();
+    let prev = null, msg = '';
+    const first = startPort ? 1 : 0, last = endPort ? cells.length - 2 : cells.length - 1;
+    if (startPort) {
+      prev = add(r2(startPort.pos[0]), r2(startPort.pos[1]), dirYaw(...startPort.dir));
+      prev.inputObjIdx = bs.indexOf(startPort.b); prev.inputFromSlot = startPort.slot;
+    }
+    for (let i = first; i <= last; i++) {
+      const [x, y] = cells[i];
+      const ex = beltAt(x, y, L);
+      if (ex) {
+        if (i === first && !prev) { prev = ex.outputObjIdx < 0 ? ex : null; continue; }
+        if (prev) link(prev, ex);
+        prev = null; break;
+      }
+      const other = beltAt(x, y, null, L);
+      if (i === first && !prev && other && other.outputObjIdx < 0) {
+        // subida/bajada al empezar sobre el final de una cinta de otro nivel
+        const nb = add(x, y, yawAt(i));
+        other.outputObjIdx = bs.indexOf(nb); other.outputToSlot = 1;
+        prev = nb; msg = levelOf(other) < L ? ' (con subida)' : ' (con bajada)';
+        continue;
+      }
+      const nb = add(x, y, yawAt(i));
+      if (prev) link(prev, nb);
+      prev = nb;
+      if (i === last && !endPort && other && !hasInput(other)) {
+        // terminar sobre el principio de una cinta de otro nivel
+        prev.outputObjIdx = bs.indexOf(other); prev.outputToSlot = 1;
+        msg = levelOf(other) > L ? ' (con subida)' : ' (con bajada)';
+        prev = null;
+      }
+    }
+    if (endPort && prev) {
+      // entrada por un puerto
+      const node = add(r2(endPort.pos[0]), r2(endPort.pos[1]), dirYaw(-endPort.dir[0], -endPort.dir[1]));
+      link(prev, node);
+      node.yaw = node.yaw2 = dirYaw(-endPort.dir[0], -endPort.dir[1]);
+      node.outputObjIdx = bs.indexOf(endPort.b); node.outputToSlot = endPort.slot;
+      msg = ` (a ${IT.itemName(endPort.b.itemId)})`;
+      prev = null;
+    } else if (prev && created.includes(prev)) {
+      // ¿hay una cinta del mismo nivel justo después del final? conectar
+      const a = prev.yaw * Math.PI / 180;
+      const nxt = beltAt(Math.round(prev.x + Math.sin(a)), Math.round(prev.y + Math.cos(a)), L);
+      if (nxt && nxt !== prev) { prev.outputObjIdx = bs.indexOf(nxt); prev.outputToSlot = 1; }
+    }
+    if (!created.length) { S.undo.pop(); return; }
+    S.sel = new Set(created);
+    refresh();
+    toast(`${created.length} cintas añadidas a nivel ${L}${msg}`);
+  }
+
+  // ------------------------------------------------------------------ clasificadores
+  function usedSlots(b) {
+    const bs = S.bp.buildings, idx = bs.indexOf(b), used = new Set();
+    for (const s of bs) {
+      if (!isSorter(s)) continue;
+      if (s.inputObjIdx === idx && s.inputFromSlot >= 0) used.add(s.inputFromSlot);
+      if (s.outputObjIdx === idx && s.outputToSlot >= 0) used.add(s.outputToSlot);
+    }
+    return used;
+  }
+
+  function drawSlots(b, labels) {
+    const list = slotsOf(b); if (!list.length) return;
+    const s = S.view.scale, used = usedSlots(b), r = Math.max(2, s * 0.12);
+    for (const { slot, pos } of list) {
+      const [px, py] = w2s(pos[0], pos[1]);
+      ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fillStyle = used.has(slot) ? '#4fc3f7' : 'rgba(15,18,24,.85)';
+      ctx.fill();
+      ctx.strokeStyle = '#4fc3f7'; ctx.lineWidth = 1.5; ctx.stroke();
+      if (labels && s > 18) {
+        ctx.fillStyle = '#fff'; ctx.font = `${Math.max(9, s * 0.25)}px Segoe UI`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        ctx.fillText(slot, px, py - r - 1);
+      }
+    }
+  }
+
+  function drawAnchor(a) {
+    const [px, py] = w2s(a.pos[0], a.pos[1]);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(px, py, Math.max(5, S.view.scale * 0.25), 0, Math.PI * 2); ctx.stroke();
+  }
+
+  // Punto de enganche bajo el cursor: hueco de edificio (prioridad) o cinta
+  function findAnchor(wx, wy, exclude) {
+    let best = null, bd = 0.45;
+    for (const b of S.bp.buildings) {
+      if (isBelt(b) || isSorter(b)) continue;
+      if (Math.abs(b.x - wx) > 5 || Math.abs(b.y - wy) > 5) continue;
+      for (const sl of slotsOf(b)) {
+        const d = Math.hypot(sl.pos[0] - wx, sl.pos[1] - wy);
+        if (d < bd) { bd = d; best = { kind: 'slot', b, slot: sl.slot, pos: sl.pos }; }
+      }
+    }
+    if (best) return exclude && exclude.b === best.b ? null : best;
+    let belt = null; bd = 0.55;
+    for (const b of S.bp.buildings) {
+      if (!isBelt(b)) continue;
+      const d = Math.max(Math.abs(b.x - wx), Math.abs(b.y - wy));
+      if (d < bd) { bd = d; belt = b; }
+    }
+    if (!belt || (exclude && exclude.b === belt)) return null;
+    return { kind: 'belt', b: belt, pos: [belt.x, belt.y] };
+  }
+
+  const beltHorizontal = (b) => Math.abs(Math.sin(b.yaw * Math.PI / 180)) > 0.7;
+  // El extremo sobre la cinta queda en la perpendicular desde el otro extremo
+  function projectOnBelt(belt, p) {
+    return beltHorizontal(belt) ? [p[0], belt.y] : [belt.x, p[1]];
+  }
+  function nearestBelt(p, fallback) {
+    let best = fallback, bd = Infinity;
+    for (const b of S.bp.buildings) {
+      if (!isBelt(b)) continue;
+      const d = Math.hypot(b.x - p[0], b.y - p[1]);
+      if (d < bd && d < 0.75) { bd = d; best = b; }
+    }
+    return best;
+  }
+
+  function sorterGeometry(a, c) {
+    let P = a.pos, Q = c.pos;
+    if (a.kind === 'slot' && c.kind === 'belt') Q = projectOnBelt(c.b, P);
+    else if (a.kind === 'belt' && c.kind === 'slot') P = projectOnBelt(a.b, Q);
+    else if (a.kind === 'belt' && c.kind === 'belt') Q = projectOnBelt(c.b, P);
+    const len = Math.hypot(Q[0] - P[0], Q[1] - P[1]);
+    return { P, Q, len, ok: c.kind !== 'free' && len >= 0.6 && len <= 3.45 };
+  }
+
+  function drawSorterPreview(g, snapped) {
+    const [ax, ay] = w2s(g.P[0], g.P[1]), [bx, by] = w2s(g.Q[0], g.Q[1]);
+    ctx.strokeStyle = g.ok ? (BELT_COLORS[S.placeItem] || '#7fb3ff') : (snapped ? '#e05555' : 'rgba(255,255,255,.5)');
+    ctx.lineWidth = Math.max(2, S.view.scale * 0.13); ctx.setLineDash(g.ok ? [] : [6, 4]);
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
+    if (snapped && !g.ok) {
+      ctx.fillStyle = '#e05555'; ctx.font = '12px Segoe UI'; ctx.textAlign = 'left';
+      ctx.fillText(`longitud ${g.len.toFixed(1)} (máx. 3)`, bx + 10, by);
+    }
+  }
+
+  // Desplazamiento sobre la cinta: floor(20 × distancia a lo largo del sentido de avance)
+  // (deducido de tus blueprints: 0,2 → 4 ; -0,2 → -5 ; 0,4 → 8 ; -0,14 → -3 ; centro → 0)
+  function beltOffset(belt, p) {
+    const a = belt.yaw * Math.PI / 180;
+    const d = (p[0] - belt.x) * Math.sin(a) + (p[1] - belt.y) * Math.cos(a);
+    if (Math.abs(d) < 1e-3) return 0;
+    const v = d * 20, r = Math.round(v);
+    // en valores exactos (0,2 → 4,0) el juego cae a un lado u otro por redondeo de float
+    if (Math.abs(v - r) < 0.05) return v > 0 ? r : r - 1;
+    return Math.floor(v);
+  }
+
+  // Lado hacia el que mira un hueco (normal hacia fuera, en local)
+  function slotNormal(b, i) {
+    const g = GEO[b.itemId], p = g.slots[i];
+    if (g.slots.length === 12) return SIDE[(g.sides || 'NESW')[Math.floor(i / 3)]];
+    const rx = Math.abs(p[0] - (g.ox || 0)) / (g.w / 2), ry = Math.abs(p[1] - (g.oy || 0)) / (g.h / 2);
+    return rx > ry ? [Math.sign(p[0]), 0] : [0, Math.sign(p[1])];
+  }
+  // En las esquinas hay dos huecos casi en el mismo punto (uno por lado):
+  // se elige el que mira hacia el otro extremo del clasificador.
+  function resolveSlot(anchor, other) {
+    if (anchor.kind !== 'slot') return anchor;
+    const b = anchor.b, a = b.yaw * Math.PI / 180;
+    let best = anchor, bestDot = -Infinity;
+    for (const sl of slotsOf(b)) {
+      if (Math.hypot(sl.pos[0] - anchor.pos[0], sl.pos[1] - anchor.pos[1]) > 0.2) continue;
+      const [nx, ny] = slotNormal(b, sl.slot);
+      const wx = nx * Math.cos(a) + ny * Math.sin(a), wy = -nx * Math.sin(a) + ny * Math.cos(a);
+      const dx = other[0] - sl.pos[0], dy = other[1] - sl.pos[1], l = Math.hypot(dx, dy) || 1;
+      const dot = (wx * dx + wy * dy) / l;
+      if (dot > bestDot) { bestDot = dot; best = { kind: 'slot', b, slot: sl.slot, pos: sl.pos }; }
+    }
+    return best;
+  }
+
+  function createSorter(a, c) {
+    a = resolveSlot(a, c.pos);
+    c = resolveSlot(c, a.pos);
+    const g = sorterGeometry(a, c);
+    if (!g.ok) { toast(`No se puede: longitud ${g.len.toFixed(1)} casillas (un clasificador mide de 1 a 3)`, true); return; }
+    const bs = S.bp.buildings;
+    const ia = a.kind === 'belt' ? nearestBelt(g.P, a.b) : a.b;
+    const ic = c.kind === 'belt' ? nearestBelt(g.Q, c.b) : c.b;
+    const yaw = normYaw(Math.atan2(g.Q[0] - g.P[0], g.Q[1] - g.P[1]) * 180 / Math.PI);
+    const s = makeBuilding(S.placeItem, g.P[0], g.P[1], yaw);
+    if (!s) return;
+    pushUndo();
+    Object.assign(s, {
+      x: g.P[0], y: g.P[1], z: 0, x2: g.Q[0], y2: g.Q[1], z2: 0, yaw, yaw2: yaw,
+      tilt: 0, pitch: 0, tilt2: 0, pitch2: 0,
+      parameters: [Math.max(1, Math.min(3, Math.round(g.len)))],
+      inputObjIdx: bs.indexOf(ia), inputFromSlot: a.kind === 'slot' ? a.slot : -1,
+      outputObjIdx: bs.indexOf(ic), outputToSlot: c.kind === 'slot' ? c.slot : -1,
+      outputFromSlot: 0, inputToSlot: 1,
+      inputOffset: a.kind === 'belt' ? beltOffset(ia, g.P) : 0,
+      outputOffset: c.kind === 'belt' ? beltOffset(ic, g.Q) : 0,
+    });
+    s.index = bs.length; bs.push(s);
+    S.sel = new Set([s]);
+    refresh();
+  }
+
+  // ------------------------------------------------------------------ transformaciones
+  function rotPoint(dx, dy, times) {
+    for (let i = 0; i < times; i++) [dx, dy] = [dy, -dx];
+    return [dx, dy];
+  }
+  function rotateBuilding(b, cx, cy, times) {
+    [b.x, b.y] = ((d) => [cx + d[0], cy + d[1]])(rotPoint(b.x - cx, b.y - cy, times));
+    [b.x2, b.y2] = ((d) => [cx + d[0], cy + d[1]])(rotPoint(b.x2 - cx, b.y2 - cy, times));
+    b.yaw = normYaw(b.yaw + 90 * times);
+    b.yaw2 = normYaw(b.yaw2 + 90 * times);
+  }
+  function centroid(list) {
+    let x = 0, y = 0;
+    for (const b of list) { x += b.x; y += b.y; }
+    return [Math.round(x / list.length), Math.round(y / list.length)];
+  }
+
+  function rotateSelection() {
+    if (S.tool === 'place' || S.tool === 'belt' || S.tool === 'paste') { S.ghostRot = (S.ghostRot + 1) % 4; requestDraw(); return; }
+    if (!S.sel.size) return;
+    pushUndo();
+    const list = [...S.sel];
+    const [cx, cy] = centroid(list);
+    list.forEach((b) => rotateBuilding(b, cx, cy, 1));
+    refresh();
+  }
+
+  // Clasificadores enganchados a los edificios de `set` que no están en él
+  function attachedSorters(set) {
+    const bs = S.bp.buildings, idx = new Set();
+    for (const b of set) if (!isSorter(b)) idx.add(bs.indexOf(b));
+    return new Set(bs.filter((b) => isSorter(b) && !set.has(b) && (idx.has(b.inputObjIdx) || idx.has(b.outputObjIdx))));
+  }
+  // Mueve la selección y los clasificadores enganchados a ella. Si el otro extremo de un clasificador
+  // no se mueve (la cinta), esa conexión se suelta: queda suelto y se puede borrar con "Clasificadores sueltos".
+  function moveSelection(dx, dy) {
+    if (!S.sel.size || (!dx && !dy)) return;
+    const bs = S.bp.buildings, carry = attachedSorters(S.sel);
+    const moved = new Set([...S.sel, ...carry]);
+    for (const b of moved) { b.x += dx; b.x2 += dx; b.y += dy; b.y2 += dy; }
+    for (const b of carry) {
+      if (b.inputObjIdx >= 0 && !moved.has(bs[b.inputObjIdx])) { b.inputObjIdx = -1; }
+      if (b.outputObjIdx >= 0 && !moved.has(bs[b.outputObjIdx])) { b.outputObjIdx = -1; }
+    }
+  }
+  // Borra los clasificadores a los que les falta el inicio o el fin
+  function cleanSorters() {
+    if (!S.bp) return;
+    const bs = S.bp.buildings;
+    const loose = new Set(bs.filter((b) => isSorter(b) && (!bs[b.inputObjIdx] || !bs[b.outputObjIdx])));
+    if (!loose.size) { toast('No hay clasificadores sueltos'); return; }
+    pushUndo();
+    removeBuildings(loose);
+    S.sel.clear();
+    refresh();
+    toast(`${loose.size} clasificadores sueltos borrados`);
+  }
+
+  function deleteSelection() {
+    if (!S.sel.size) return;
+    pushUndo();
+    const n = S.sel.size;
+    removeBuildings(S.sel);
+    S.sel.clear();
+    refresh();
+    toast(`${n} edificios borrados`);
+  }
+
+  function removeBuildings(rm) {
+    const old = S.bp.buildings, map = new Map(), nb = [];
+    old.forEach((b, i) => { if (!rm.has(b)) { map.set(i, nb.length); nb.push(b); } });
+    for (const b of nb) {
+      if (b.outputObjIdx >= 0) {
+        if (map.has(b.outputObjIdx)) b.outputObjIdx = map.get(b.outputObjIdx);
+        else { b.outputObjIdx = -1; if (isBelt(b)) b.outputToSlot = 0; }
+      }
+      if (b.inputObjIdx >= 0) {
+        if (map.has(b.inputObjIdx)) b.inputObjIdx = map.get(b.inputObjIdx);
+        else { b.inputObjIdx = -1; if (isBelt(b)) b.inputFromSlot = 0; }
+      }
+    }
+    nb.forEach((b, i) => { b.index = i; });
+    S.bp.buildings = nb;
+  }
+
+  // ------------------------------------------------------------------ portapapeles interno
+  // withSorters: añade los clasificadores enganchados a lo seleccionado (Mayús, como en el juego)
+  function copySelection(cut, withSorters) {
+    if (!S.sel.size) return;
+    const bs = S.bp.buildings;
+    const picked = new Set(S.sel);
+    if (withSorters) {
+      const idx = new Set([...S.sel].map((b) => bs.indexOf(b)));
+      for (const b of bs) if (isSorter(b) && (idx.has(b.inputObjIdx) || idx.has(b.outputObjIdx))) picked.add(b);
+    }
+    const list = bs.filter((b) => picked.has(b));
+    const local = new Map(list.map((b, i) => [bs.indexOf(b), i]));
+    const main = list.filter((b) => !isSorter(b));
+    const [cx, cy] = centroid(main.length ? main : list);
+    const items = list.map((b) => {
+      const c = JSON.parse(JSON.stringify(b));
+      c.x -= cx; c.x2 -= cx; c.y -= cy; c.y2 -= cy;
+      c.outputObjIdx = local.has(b.outputObjIdx) ? local.get(b.outputObjIdx) : -1;
+      c.inputObjIdx = local.has(b.inputObjIdx) ? local.get(b.inputObjIdx) : -1;
+      if (c.outputObjIdx < 0 && isBelt(c)) c.outputToSlot = 0;
+      if (c.inputObjIdx < 0 && isBelt(c)) c.inputFromSlot = 0;
+      return c;
+    });
+    S.clip = { items };
+    try { localStorage.setItem('dspbp.clip', JSON.stringify(S.clip)); } catch (e) { /* ignorar */ }
+    if (cut) deleteSelection();
+    else toast(`${items.length} edificios copiados`);
+  }
+
+  function clipPlaced(gx, gy) {
+    return S.clip.items.map((c) => {
+      const b = JSON.parse(JSON.stringify(c));
+      rotateBuilding(b, 0, 0, S.ghostRot);
+      b.x += gx; b.x2 += gx; b.y += gy; b.y2 += gy;
+      return b;
+    });
+  }
+
+  function startPaste() {
+    if (!S.clip) {
+      try { S.clip = JSON.parse(localStorage.getItem('dspbp.clip') || 'null'); } catch (e) { /* ignorar */ }
+    }
+    if (!S.clip || !S.bp) return;
+    S.ghostRot = 0;
+    setTool('paste');
+  }
+
+  // Posiciones de una fila de copias de start a end: por el eje largo, separadas lo que mide el portapapeles
+  function rowPositions(start, end) {
+    const dx = end[0] - start[0], dy = end[1] - start[1];
+    if (!dx && !dy) return [start];
+    const horiz = Math.abs(dx) >= Math.abs(dy);
+    let lo = Infinity, hi = -Infinity;
+    for (const b of clipPlaced(0, 0)) {
+      const k = COL.body(b); if (!k || isBelt(b)) continue;
+      lo = Math.min(lo, horiz ? k.cx - k.hw : k.cy - k.hh); hi = Math.max(hi, horiz ? k.cx + k.hw : k.cy + k.hh);
+    }
+    const step = Math.max(1, Math.ceil((hi - lo) - 0.06)) || 1, len = horiz ? dx : dy, n = Math.floor(Math.abs(len) / step);
+    const out = [];
+    for (let i = 0; i <= n; i++) out.push(horiz ? [start[0] + Math.sign(len) * i * step, start[1]] : [start[0], start[1] + Math.sign(len) * i * step]);
+    return out;
+  }
+  function addClip(gx, gy) {
+    const base = S.bp.buildings.length;
+    const list = clipPlaced(gx, gy);
+    list.forEach((b, i) => {
+      b.index = base + i;
+      if (b.outputObjIdx >= 0) b.outputObjIdx += base;
+      if (b.inputObjIdx >= 0) b.inputObjIdx += base;
+      if (b.magic !== newMagic() && S.bp.buildings.length) b.magic = newMagic();
+      S.bp.buildings.push(b);
+    });
+    return list;
+  }
+  function placeRow(start, end) {
+    const pos = rowPositions(start, end);
+    pushUndo();
+    const placed = [];
+    let skipped = 0;
+    for (const [x, y] of pos) {
+      if (COL.find(clipPlaced(x, y), S.bp.buildings).length) { skipped++; continue; }
+      placed.push(...addClip(x, y));
+    }
+    if (!placed.length) { S.undo.pop(); if (pos.length > 1 || skipped) toast('No cabe: chocaría', true); return; }
+    S.sel = new Set(placed);
+    learnTemplates(S.bp);
+    refresh();
+    if (pos.length > 1) toast(`${pos.length - skipped} copias${skipped ? ` (${skipped} saltadas por choque)` : ''}`);
+  }
+
+  function placeClip(gx, gy) {
+    pushUndo();
+    const base = S.bp.buildings.length;
+    const list = clipPlaced(gx, gy);
+    list.forEach((b, i) => {
+      b.index = base + i;
+      if (b.outputObjIdx >= 0) b.outputObjIdx += base;
+      if (b.inputObjIdx >= 0) b.inputObjIdx += base;
+      if (b.magic !== newMagic() && S.bp.buildings.length) b.magic = newMagic();
+      S.bp.buildings.push(b);
+    });
+    S.sel = new Set(list);
+    learnTemplates(S.bp);
+    refresh();
+  }
+
+  // ------------------------------------------------------------------ eventos del ratón
+  function updateMouse(ev) {
+    const r = canvas.getBoundingClientRect();
+    S.mouse.sx = ev.clientX - r.left; S.mouse.sy = ev.clientY - r.top;
+    [S.mouse.wx, S.mouse.wy] = s2w(S.mouse.sx, S.mouse.sy);
+    $('stCursor').textContent = `x ${Math.round(S.mouse.wx)}  y ${Math.round(S.mouse.wy)}`;
+  }
+
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('mouseenter', () => { S.mouse.inside = true; });
+  canvas.addEventListener('mouseleave', () => { S.mouse.inside = false; requestDraw(); });
+
+  canvas.addEventListener('mousedown', (ev) => {
+    updateMouse(ev);
+    if (ev.button === 1 || ev.button === 2 || S.space) {
+      S.drag = { type: 'pan', sx: ev.clientX, sy: ev.clientY, cx: S.view.cx, cy: S.view.cy };
+      canvas.style.cursor = 'grabbing';
+      return;
+    }
+    if (ev.button !== 0 || !S.bp) return;
+    const gx = Math.round(S.mouse.wx), gy = Math.round(S.mouse.wy);
+    if (S.tool === 'place') { placeBuilding(gx, gy); return; }
+    if (S.tool === 'belt') { S.drag = { type: 'belt', start: [gx, gy] }; requestDraw(); return; }
+    if (S.tool === 'sorter') {
+      const a = findAnchor(S.mouse.wx, S.mouse.wy);
+      if (!a) { toast('Empieza en una cinta o en un hueco de un edificio (los puntos)', true); return; }
+      S.drag = { type: 'sorter', start: a }; requestDraw(); return;
+    }
+    if (S.tool === 'paste') {
+      S.drag = { type: 'pasteRow', start: [gx, gy], keep: ev.shiftKey };
+      requestDraw(); return;
+    }
+    const hit = pick(S.mouse.wx, S.mouse.wy);
+    // Mayús+clic en un edificio: copiarlo (con receta y clasificadores) y, sin soltar, arrastrar para poner copias en fila
+    if (hit && ev.shiftKey && !isBelt(hit) && !isSorter(hit)) {
+      S.sel = new Set([hit]);
+      copySelection(false, true);
+      startPaste();
+      S.drag = { type: 'pasteRow', start: [Math.round(hit.x), Math.round(hit.y)], keep: true };
+      requestDraw(); return;
+    }
+    if (hit) {
+      if (ev.ctrlKey) {
+        if (S.sel.has(hit)) S.sel.delete(hit); else S.sel.add(hit);
+        refresh();
+        return;
+      }
+      if (!S.sel.has(hit)) { S.sel.clear(); S.sel.add(hit); refresh(); }
+      S.drag = { type: 'move', wx0: S.mouse.wx, wy0: S.mouse.wy, dx: 0, dy: 0, carry: attachedSorters(S.sel) };
+    } else {
+      if (!ev.ctrlKey) { S.sel.clear(); refresh(); }
+      S.drag = { type: 'box', sx0: S.mouse.sx, sy0: S.mouse.sy, add: ev.ctrlKey };
+    }
+  });
+
+  window.addEventListener('mousemove', (ev) => {
+    updateMouse(ev);
+    const d = S.drag;
+    if (d && d.type === 'pan') {
+      S.view.cx = d.cx - (ev.clientX - d.sx) / S.view.scale;
+      S.view.cy = d.cy + (ev.clientY - d.sy) / S.view.scale;
+    } else if (d && d.type === 'move') {
+      d.dx = Math.round(S.mouse.wx - d.wx0); d.dy = Math.round(S.mouse.wy - d.wy0);
+    }
+    if (d || S.tool !== 'select') requestDraw();
+  });
+
+  window.addEventListener('mouseup', () => {
+    const d = S.drag; if (!d) return;
+    S.drag = null;
+    if (d.type === 'pan') { canvas.style.cursor = S.tool === 'select' ? 'default' : 'crosshair'; return; }
+    if (d.type === 'move') {
+      if (d.dx || d.dy) { pushUndo(); moveSelection(d.dx, d.dy); refresh(); }
+      requestDraw();
+    } else if (d.type === 'box') {
+      const [ax, ay] = s2w(d.sx0, d.sy0), [bx, by] = s2w(S.mouse.sx, S.mouse.sy);
+      const x0 = Math.min(ax, bx), x1 = Math.max(ax, bx), y0 = Math.min(ay, by), y1 = Math.max(ay, by);
+      if (Math.abs(d.sx0 - S.mouse.sx) > 3 || Math.abs(d.sy0 - S.mouse.sy) > 3) {
+        for (const b of S.bp.buildings) if (b.x >= x0 && b.x <= x1 && b.y >= y0 && b.y <= y1) S.sel.add(b);
+      }
+      refresh();
+    } else if (d.type === 'pasteRow') {
+      placeRow(d.start, [Math.round(S.mouse.wx), Math.round(S.mouse.wy)]);
+      if (!d.keep) setTool('select');
+    } else if (d.type === 'belt') {
+      createBeltLine(beltPath(d.start, [Math.round(S.mouse.wx), Math.round(S.mouse.wy)]));
+    } else if (d.type === 'sorter') {
+      const end = findAnchor(S.mouse.wx, S.mouse.wy, d.start);
+      if (end) createSorter(d.start, end);
+      requestDraw();
+    }
+  });
+
+  canvas.addEventListener('dblclick', (ev) => {
+    updateMouse(ev);
+    if (S.tool !== 'select' || !S.bp) return;
+    const hit = pick(S.mouse.wx, S.mouse.wy);
+    if (hit && isBelt(hit)) { selectBeltLine(hit); refresh(); }
+    else if (hit) { S.bp.buildings.forEach((b) => { if (b.itemId === hit.itemId && b.recipeId === hit.recipeId) S.sel.add(b); }); refresh(); }
+  });
+
+  canvas.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    updateMouse(ev);
+    const [wx, wy] = [S.mouse.wx, S.mouse.wy];
+    const f = Math.exp(-ev.deltaY * 0.0015);
+    S.view.scale = Math.max(1.5, Math.min(120, S.view.scale * f));
+    // mantener el punto bajo el cursor
+    S.view.cx = wx - (S.mouse.sx - W / 2) / S.view.scale;
+    S.view.cy = wy + (S.mouse.sy - H / 2) / S.view.scale;
+    requestDraw(); updateStatus();
+  }, { passive: false });
+
+  // ------------------------------------------------------------------ teclado
+  window.addEventListener('keydown', (ev) => {
+    const tag = (ev.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (document.querySelector('dialog[open]')) return;
+    const k = ev.key.toLowerCase(), ctrl = ev.ctrlKey || ev.metaKey;
+    if (ctrl && k === 's') { ev.preventDefault(); save(); return; }
+    if (ctrl && k === 'o') { ev.preventDefault(); openFile(); return; }
+    if (!S.bp) return;
+    if (ctrl && k === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
+    if (ctrl && k === 'y') { ev.preventDefault(); redo(); return; }
+    if (ctrl && k === 'c') { copySelection(false); return; }
+    if (ctrl && k === 'x') { copySelection(true); return; }
+    if (ctrl && k === 'v') { startPaste(); return; }
+    if (ctrl && k === 'd') { ev.preventDefault(); copySelection(false); startPaste(); return; }
+    if (ctrl && k === 'a') { ev.preventDefault(); S.sel = new Set(S.bp.buildings); refresh(); return; }
+    if (k === ' ') { S.space = true; canvas.style.cursor = 'grab'; ev.preventDefault(); return; }
+    if (k === 'delete' || k === 'backspace') { deleteSelection(); return; }
+    if (k === 'escape') { if (S.tool !== 'select') setTool('select'); else { S.sel.clear(); refresh(); } return; }
+    if (k === 'r' && S.tool === 'belt') {
+      // en diagonal: alterna entre empezar en horizontal o en vertical
+      S.beltFlip = !S.beltFlip; requestDraw();
+      toast(`El codo empieza ${S.beltFlip ? 'al revés' : 'por el lado largo'}`); return;
+    }
+    if (k === 'r') { rotateSelection(); return; }
+    // +/- (como en el juego) o RePág/AvPág: altura de la cinta
+    if (k === '+' || k === '-' || k === 'pageup' || k === 'pagedown') {
+      ev.preventDefault();
+      const up = k === '+' || k === 'pageup';
+      const l = Math.max(0, Math.min(4, curLevel() + (up ? 1 : -1)));
+      if (l === curLevel()) return;
+      const d = S.drag;
+      if (S.tool === 'belt' && d && d.type === 'belt') {
+        // a mitad de trazado: se crea el tramo hasta aquí y se sigue desde esta casilla al nuevo nivel
+        // (la casilla queda con dos cintas, una por nivel: la subida o bajada)
+        const here = [Math.round(S.mouse.wx), Math.round(S.mouse.wy)];
+        createBeltLine(beltPath(d.start, here));
+        setLevel(l);
+        S.drag = { type: 'belt', start: here };
+        toast(`${up ? 'Subida' : 'Bajada'} a nivel ${l}: sigue arrastrando`);
+        requestDraw(); return;
+      }
+      setLevel(l); toast(`Nivel ${S.level}`); return;
+    }
+    // E: elegir receta de lo seleccionado
+    if (k === 'e') {
+      const btn = $('recipeBtn');
+      if (btn) { ev.preventDefault(); if (!$('recipePop')) openRecipePicker(btn); }
+      else toast('Selecciona un edificio de producción para elegir su receta', true);
+      return;
+    }
+    if (k === 'tab') {
+      ev.preventDefault();
+      const models = Object.keys(SPLIT).map(Number);
+      const sel = [...S.sel].filter((b) => b.itemId === 2020);
+      if (S.tool === 'place' && S.placeItem === 2020) {
+        S.splitModel = models[(models.indexOf(S.splitModel) + 1) % models.length];
+        toast(`Divisor: ${SPLIT[S.splitModel].name}`); setTool('place', 2020);
+      } else if (sel.length) {
+        pushUndo();
+        const m = models[(models.indexOf(sel[0].modelIndex) + 1) % models.length];
+        sel.forEach((b) => { b.modelIndex = m; });
+        toast(`Divisor: ${SPLIT[m].name}`); refresh();
+      }
+      return;
+    }
+    if (k === 'f') { fitView(); return; }
+    if (k === 'v') { setTool('select'); return; }
+    const arrows = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, 1], arrowdown: [0, -1] };
+    if (arrows[k] && S.sel.size) {
+      ev.preventDefault();
+      const m = ev.shiftKey ? 5 : 1;
+      pushUndo(); moveSelection(arrows[k][0] * m, arrows[k][1] * m); refresh();
+    }
+  });
+  window.addEventListener('keyup', (ev) => {
+    if (ev.key === ' ') { S.space = false; canvas.style.cursor = S.tool === 'select' ? 'default' : 'crosshair'; }
+  });
+
+  // ------------------------------------------------------------------ inspector
+  function refresh() {
+    updateHits();
+    requestDraw();
+    renderInspector();
+    updateStatus();
+  }
+
+  function updateStatus() {
+    if (!S.bp) { $('stInfo').textContent = ''; return; }
+    const n = S.hits ? S.hits.length : 0;
+    $('stInfo').textContent = `${S.bp.buildings.length} edificios · ${S.sel.size} seleccionados · zoom ${S.view.scale.toFixed(1)}` +
+      (n ? ` · ⚠ ${n} choque${n > 1 ? 's' : ''}` : '');
+  }
+
+  // Recalcula los choques; avisa si la última acción ha creado alguno nuevo
+  function updateHits() {
+    if (!S.bp) { S.hits = null; return; }
+    const prev = S.hits ? S.hits.length : null;
+    S.hits = COL.find(S.bp.buildings);
+    if (prev !== null && S.hits.length > prev && S.undo.length) {
+      // la última acción ha creado un choque: se deshace (sin dejarla para rehacer)
+      const [a, b] = S.hits[S.hits.length - 1];
+      S.bp = JSON.parse(S.undo.pop());
+      S.sel.clear();
+      S.hits = COL.find(S.bp.buildings);
+      toast(`No se puede: ${IT.itemName(a.itemId)} chocaría con ${IT.itemName(b.itemId)}`, true);
+    }
+  }
+
+  function field(label, inner) { return `<div class="field"><label>${label}</label><div>${inner}</div></div>`; }
+
+  function renderInspector() {
+    const el = $('inspector');
+    if (!S.bp) { el.innerHTML = '<p class="muted">Sin blueprint abierto.</p>'; return; }
+    if (S.sel.size === 0) el.innerHTML = inspectorBlueprint();
+    else if (S.sel.size === 1) el.innerHTML = inspectorSingle([...S.sel][0]);
+    else el.innerHTML = inspectorMulti();
+  }
+
+  function countTable(list, attr) {
+    const counts = new Map();
+    for (const b of list) counts.set(b.itemId, (counts.get(b.itemId) || 0) + 1);
+    const rows = [...counts.entries()].sort((a, b) => b[1] - a[1])
+      .map(([id, n]) => `<tr><td><span class="link" data-${attr}="${id}">${esc(IT.itemName(id))}</span></td><td class="num">${n}</td></tr>`).join('');
+    return `<table>${rows}</table>`;
+  }
+
+  function inspectorBlueprint() {
+    const h = S.bp.header;
+    const date = BP.ticksToDate(h.time);
+    const icons = h.icons.map((v, i) => `<input type="number" data-icon="${i}" value="${v}" title="${esc(IT.itemName(v))}">`).join('');
+    const iconNames = h.icons.filter((v) => v).map((v) => esc(IT.itemName(v))).join(', ') || '—';
+    return `<h3>Blueprint</h3>
+      ${field('Nombre', `<input id="hName" value="${esc(h.shortDesc)}">`)}
+      ${field('Descripción', `<textarea id="hDesc" rows="3">${esc(h.desc)}</textarea>`)}
+      <div class="field"><label>Iconos</label><div class="icons-row">${icons}</div></div>
+      <p class="muted small" style="margin:0 0 4px 101px">${iconNames}</p>
+      ${field('Disposición', `<input type="number" id="hLayout" value="${h.layout}" title="Decenas = nº de iconos (10, 21, 50…)">`)}
+      ${field('Versión juego', `<span class="muted">${esc(h.gameVersion)}</span>`)}
+      ${field('Fecha', `<span class="muted">${date ? date.toLocaleString() : '—'}</span>`)}
+      ${field('Hash', S.bp.hashOk ? '<span class="badge ok">válido</span>' : '<span class="badge bad">no coincidía</span>')}
+      ${field('Tamaño', `<span class="muted">${S.bp.areas[0] ? S.bp.areas[0].size.x + ' × ' + S.bp.areas[0].size.y : '—'} (${S.bp.areas.length} área${S.bp.areas.length > 1 ? 's' : ''})</span>`)}
+      <hr class="sep">
+      <h3>Edificios (${S.bp.buildings.length})</h3>
+      <p class="muted small">Clic en un tipo para seleccionarlos todos.</p>
+      ${countTable(S.bp.buildings, 'selitem')}`;
+  }
+
+  function connLabel(idx) {
+    if (idx < 0) return '<span class="muted">ninguna</span>';
+    const t = S.bp.buildings[idx];
+    if (!t) return `#${idx} <span class="muted">(no existe)</span>`;
+    return `<span class="link" data-goto="${idx}">#${idx} ${esc(IT.itemName(t.itemId))}</span>`;
+  }
+
+  function inspectorSingle(b) {
+    const info = IT.buildingInfo(b.itemId);
+    const idx = S.bp.buildings.indexOf(b);
+    const prod = PRODUCTION.has(info.cat) || b.recipeId;
+    const slots = [b.outputToSlot, b.inputFromSlot, b.outputFromSlot, b.inputToSlot, b.outputOffset, b.inputOffset].join(', ');
+    const big = b.parameters.length > 64;
+    let html = `<h3>Edificio #${idx}</h3>
+      ${field('Tipo', `<b>${esc(info.name)}</b> <span class="muted">(${b.itemId})</span>`)}
+      ${b.itemId === 2020 && SPLIT[b.modelIndex]
+    ? field('Variante', `<select id="splitModel">${Object.entries(SPLIT).map(([m, v]) => `<option value="${m}"${+m === b.modelIndex ? ' selected' : ''}>${esc(v.name)} (${m})</option>`).join('')}</select><div class="muted small">Tab cambia la variante</div>`)
+    : field('Modelo', `<input type="number" data-f="modelIndex" value="${b.modelIndex}">`)}
+      <div class="field"><label>Posición</label><div class="xyz">
+        <input type="number" step="0.5" data-f="x" value="${r2(b.x)}" title="x">
+        <input type="number" step="0.5" data-f="y" value="${r2(b.y)}" title="y">
+        <input type="number" step="0.5" data-f="z" value="${r2(b.z)}" title="altura"></div></div>`;
+    if (isSorter(b)) {
+      html += `<div class="field"><label>Posición final</label><div class="xyz">
+        <input type="number" step="0.1" data-f="x2" value="${r2(b.x2)}"><input type="number" step="0.1" data-f="y2" value="${r2(b.y2)}">
+        <input type="number" step="0.1" data-f="z2" value="${r2(b.z2)}"></div></div>`;
+    }
+    html += field('Orientación', `<input type="number" step="90" data-f="yaw" value="${r2(b.yaw)}" title="grados (0 = norte, 90 = este)">`);
+    if (prod) html += field('Receta', recipeButton(b.recipeId));
+    if (isSorter(b) || b.filterId) html += field('Filtro', `<input type="number" data-f="filterId" value="${b.filterId}"><div class="muted small">${esc(IT.itemName(b.filterId))}</div>`);
+    if (isBelt(b)) {
+      const label = b.parameters[0] || 0;
+      html += field('Icono cinta', `<input type="number" id="beltLabel" value="${label}"><div class="muted small">${label ? esc(IT.itemName(label)) : 'sin icono'}</div>`);
+    }
+    html += `<hr class="sep"><h3>Conexiones</h3>
+      ${field('Salida →', connLabel(b.outputObjIdx))}
+      ${field('Entrada ←', connLabel(b.inputObjIdx))}
+      ${field('Huecos', `<input id="slots" value="${slots}" title="outToSlot, inFromSlot, outFromSlot, inToSlot, outOffset, inOffset">`)}
+      <p class="muted small">Huecos: salidaA, entradaDe, salidaDe, entradaA, despl. salida, despl. entrada.</p>
+      <hr class="sep"><h3>Parámetros (${b.parameters.length})</h3>
+      ${big ? '<p class="muted small">Muchos valores (configuración de estación/almacén). Edita con cuidado.</p>' : ''}
+      <textarea id="params" rows="${big ? 6 : 3}">${b.parameters.join(', ')}</textarea>
+      <div class="row end"><button id="btnApplyParams">Aplicar parámetros</button></div>
+      <hr class="sep">
+      <div class="row"><button id="btnSelSame">Seleccionar iguales</button><button class="danger" id="btnDelOne">Borrar</button></div>`;
+    return html;
+  }
+
+  function inspectorMulti() {
+    const list = [...S.sel];
+    const prodList = list.filter((b) => PRODUCTION.has(IT.buildingInfo(b.itemId).cat));
+    const recipes = new Set(prodList.map((b) => b.recipeId));
+    let html = `<h3>${list.length} edificios seleccionados</h3>
+      <p class="muted small">Clic en un tipo para quedarte solo con ese tipo.</p>
+      ${countTable(list, 'keepitem')}`;
+    if (prodList.length) {
+      const r = recipes.size === 1 ? [...recipes][0] : '';
+      html += `<hr class="sep"><h3>Receta (${prodList.length} de producción)</h3>
+        ${field('Receta', recipeButton(r === '' ? null : r))}`;
+    }
+    const belts = list.filter(isBelt);
+    if (belts.length) {
+      html += `<hr class="sep"><h3>Cintas (${belts.length})</h3>
+        ${field('Cambiar a', `<select id="beltTier"><option value="">—</option>${[2001, 2002, 2003].filter((id) => S.templates[id]).map((id) => `<option value="${id}">${esc(IT.itemName(id))}</option>`).join('')}</select>`)}`;
+    }
+    html += `<hr class="sep"><div class="row"><button id="btnRotSel">⟳ Girar</button><button id="btnCopySel">Copiar</button><button class="danger" id="btnDelSel">Borrar</button></div>`;
+    return html;
+  }
+
+  // ------------------------------------------------------------------ selector de recetas
+  // Dibujos: icons/recipes/ID.webp (de la wiki, tools/gen_recipes.py). Sin dibujo, insignia con iniciales.
+  const ICONS = {};
+  for (const r of Object.values(IT.RECIPE_INFO)) if (r.icon) ICONS[r.id] = r.icon;
+  const ICON_IMG = {};
+  function iconImg(id) {
+    if (!ICONS[id]) return null;
+    if (!ICON_IMG[id]) { const im = new Image(); im.onload = requestDraw; im.src = ICONS[id]; ICON_IMG[id] = im; }
+    return ICON_IMG[id].complete && ICON_IMG[id].naturalWidth ? ICON_IMG[id] : null;
+  }
+  function initials(name) {
+    const w = name.replace(/\(.*\)/, '').split(/\s+/).filter((x) => x && !/^(de|del|la|el|y|por)$/i.test(x));
+    const mk = name.match(/Mk\.(I+)/);
+    if (mk) return w[0][0].toUpperCase() + mk[1].length;
+    return (w.length > 1 ? w[0][0] + w[1][0] : w[0].slice(0, 2)).toUpperCase();
+  }
+  function recipeIcon(id, size) {
+    if (ICONS[id]) return `<img class="ricon" src="${ICONS[id]}" width="${size}" height="${size}" alt="">`;
+    const info = IT.RECIPE_INFO[id];
+    const txt = !id ? '—' : info && info.known ? initials(info.name) : '#' + id;
+    return `<span class="ricon badge g-${info ? info.group : 'x'}" style="width:${size}px;height:${size}px;font-size:${Math.round(size * (txt.length > 3 ? 0.3 : 0.38))}px">${esc(txt)}</span>`;
+  }
+  function recipeButton(current) {
+    const label = current === null ? 'recetas distintas' : current ? (IT.RECIPE_INFO[current] || { name: 'Receta #' + current }).name : 'Sin receta';
+    return `<button type="button" class="rbtn" id="recipeBtn">${recipeIcon(current || 0, 28)}<span>${esc(label)}</span><span class="muted">▾</span></button>`;
+  }
+  // Recetas posibles para la selección (unión de los grupos de sus edificios)
+  function recipeChoices() {
+    const seen = new Set(), out = [];
+    for (const b of S.sel) for (const r of IT.recipesFor(b.itemId)) if (!seen.has(r.id)) { seen.add(r.id); out.push(r); }
+    return out;
+  }
+  function openRecipePicker(btn) {
+    closeRecipePicker();
+    const list = recipeChoices();
+    const cur = [...S.sel].find((b) => b.recipeId)?.recipeId;
+    const pop = document.createElement('div');
+    pop.id = 'recipePop';
+    pop.innerHTML = `<input type="search" id="recipeSearch" placeholder="Buscar receta…">
+      <div class="rgrid">
+        <button type="button" class="rtile" data-recipe="0">${recipeIcon(0, 36)}<span>Sin receta</span></button>
+        ${list.map((r) => `<button type="button" class="rtile${r.id === cur ? ' cur' : ''}${r.known ? '' : ' unknown'}" data-recipe="${r.id}" title="${esc(r.name)}${r.en && r.en !== r.name ? ' / ' + esc(r.en) : ''} (#${r.id})" data-en="${esc((r.en || '').toLowerCase())}">${recipeIcon(r.id, 36)}<span>${esc(r.name)}</span></button>`).join('')}
+      </div>
+      <div class="row"><label class="small muted">Otra (nº)</label><input type="number" id="recipeOther" min="0" style="width:80px"></div>`;
+    (btn.closest('.field') || btn).after(pop);
+    const search = pop.querySelector('#recipeSearch');
+    search.focus();
+    search.addEventListener('input', () => {
+      const q = search.value.toLowerCase();
+      pop.querySelectorAll('.rtile').forEach((t) => { t.hidden = q && !t.textContent.toLowerCase().includes(q) && !(t.dataset.en || '').includes(q) && t.dataset.recipe !== q; });
+    });
+    pop.addEventListener('click', (ev) => {
+      const t = ev.target.closest('.rtile'); if (!t) return;
+      applyRecipe(+t.dataset.recipe);
+    });
+    pop.querySelector('#recipeOther').addEventListener('change', (ev) => {
+      const v = parseInt(ev.target.value, 10); if (Number.isFinite(v) && v >= 0) applyRecipe(v);
+    });
+  }
+  function closeRecipePicker() { const p = $('recipePop'); if (p) p.remove(); }
+  function applyRecipe(id) {
+    closeRecipePicker();
+    const group = IT.RECIPE_INFO[id] && IT.RECIPE_INFO[id].group;
+    const targets = [...S.sel].filter((b) => {
+      const g = IT.RECIPE_GROUP[b.itemId];
+      return g ? (!id || !group || g === group) : PRODUCTION.has(IT.buildingInfo(b.itemId).cat);
+    });
+    if (!targets.length) { toast('Esa receta no vale para estos edificios', true); return; }
+    pushUndo();
+    for (const b of targets) b.recipeId = id;
+    refresh();
+    if (targets.length < S.sel.size && S.sel.size > 1) toast(`Receta aplicada a ${targets.length} edificios`);
+  }
+  document.addEventListener('mousedown', (ev) => {
+    const p = $('recipePop');
+    if (p && !p.contains(ev.target) && ev.target.id !== 'recipeBtn' && !ev.target.closest('#recipeBtn')) closeRecipePicker();
+  });
+
+  // Delegación de eventos del inspector
+  const insp = $('inspector');
+  insp.addEventListener('click', (ev) => {
+    const t = ev.target;
+    if (t.dataset.selitem) { S.sel = new Set(S.bp.buildings.filter((b) => b.itemId === +t.dataset.selitem)); refresh(); }
+    else if (t.dataset.keepitem) { S.sel = new Set([...S.sel].filter((b) => b.itemId === +t.dataset.keepitem)); refresh(); }
+    else if (t.dataset.goto) {
+      const b = S.bp.buildings[+t.dataset.goto];
+      if (b) { S.sel = new Set([b]); S.view.cx = b.x; S.view.cy = b.y; refresh(); }
+    } else if (t.id === 'btnDelOne' || t.id === 'btnDelSel') deleteSelection();
+    else if (t.closest('#recipeBtn')) { if ($('recipePop')) closeRecipePicker(); else openRecipePicker(t.closest('#recipeBtn')); }
+    else if (t.id === 'btnRotSel') rotateSelection();
+    else if (t.id === 'btnCopySel') copySelection(false);
+    else if (t.id === 'btnSelSame') {
+      const b = [...S.sel][0];
+      S.sel = new Set(S.bp.buildings.filter((x) => x.itemId === b.itemId && x.recipeId === b.recipeId)); refresh();
+    } else if (t.id === 'btnApplyParams') {
+      const b = [...S.sel][0];
+      const vals = $('params').value.split(/[\s,;]+/).filter((v) => v !== '').map((v) => parseInt(v, 10));
+      if (vals.some((v) => !Number.isFinite(v))) { toast('Parámetros no válidos (solo enteros)', true); return; }
+      pushUndo(); b.parameters = vals; refresh(); toast('Parámetros aplicados');
+    }
+  });
+
+  insp.addEventListener('change', (ev) => {
+    const t = ev.target;
+    const h = S.bp.header;
+    if (t.id === 'hName') { pushUndo(); h.shortDesc = t.value; setDirty(true); return; }
+    if (t.id === 'hDesc') { pushUndo(); h.desc = t.value; return; }
+    if (t.id === 'hLayout') { pushUndo(); h.layout = parseInt(t.value, 10) || 10; return; }
+    if (t.dataset.icon !== undefined) { pushUndo(); h.icons[+t.dataset.icon] = parseInt(t.value, 10) || 0; renderInspector(); return; }
+    if (t.dataset.f) {
+      const b = [...S.sel][0], f = t.dataset.f, v = parseFloat(t.value);
+      if (!Number.isFinite(v)) return;
+      pushUndo();
+      if (f === 'x' || f === 'y' || f === 'z') { const d = v - b[f]; b[f] = v; b[f + '2'] += d; }
+      else if (f === 'yaw') { const d = v - b.yaw; b.yaw = normYaw(v); b.yaw2 = normYaw(b.yaw2 + d); }
+      else b[f] = Math.round(v);
+      refresh(); return;
+    }
+    if (t.id === 'beltLabel') {
+      const b = [...S.sel][0], v = parseInt(t.value, 10) || 0;
+      pushUndo(); b.parameters = v ? [v, 0] : []; refresh(); return;
+    }
+    if (t.id === 'slots') {
+      const b = [...S.sel][0], v = t.value.split(/[\s,;]+/).map((x) => parseInt(x, 10));
+      if (v.length !== 6 || v.some((x) => !Number.isFinite(x))) { toast('Se esperan 6 números', true); return; }
+      pushUndo();
+      [b.outputToSlot, b.inputFromSlot, b.outputFromSlot, b.inputToSlot, b.outputOffset, b.inputOffset] = v;
+      refresh(); return;
+    }
+    if (t.id === 'splitModel') {
+      pushUndo(); for (const b of S.sel) if (b.itemId === 2020) b.modelIndex = +t.value;
+      refresh(); return;
+    }
+    if (t.id === 'beltTier' && t.value) {
+      const id = +t.value, tpl = S.templates[id];
+      pushUndo();
+      for (const b of S.sel) if (isBelt(b)) { b.itemId = id; b.modelIndex = tpl.modelIndex; }
+      refresh();
+    }
+  });
+
+  // ------------------------------------------------------------------ botones superiores
+  $('btnNew').onclick = newBlueprint;
+  $('btnOpenFile').onclick = openFile;
+  $('btnOpenDir').onclick = openDir;
+  $('btnPaste').onclick = () => { $('pasteText').value = ''; $('dlgPaste').showModal(); $('pasteText').focus(); };
+  $('dlgPaste').addEventListener('close', async () => {
+    if ($('dlgPaste').returnValue !== 'ok') return;
+    const text = $('pasteText').value.trim(); if (!text) return;
+    if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return;
+    await loadText(text, '', null);
+  });
+  $('btnCopy').onclick = copyCode;
+  $('btnSave').onclick = save;
+  $('btnSaveAs').onclick = saveAs;
+  $('btnDownload').onclick = download;
+  $('btnUndo').onclick = undo;
+  $('btnRedo').onclick = redo;
+  $('btnRotate').onclick = rotateSelection;
+  $('btnDup').onclick = () => { copySelection(false); startPaste(); };
+  $('btnDelete').onclick = deleteSelection;
+  $('btnFit').onclick = fitView;
+  $('btnCleanSorters').onclick = cleanSorters;
+  $('levelSel').onchange = (e) => { setLevel(e.target.value === 'all' ? 'all' : +e.target.value); e.target.blur(); };
+  $('chkLabels').onchange = (e) => { S.showLabels = e.target.checked; requestDraw(); };
+  $('chkLinks').onchange = (e) => { S.showLinks = e.target.checked; requestDraw(); };
+
+  $('fileInput').addEventListener('change', async (ev) => {
+    const f = ev.target.files[0]; if (!f) return;
+    await loadText(await f.text(), f.name, null);
+    ev.target.value = '';
+  });
+  $('dirInput').addEventListener('change', (ev) => {
+    const files = [...ev.target.files].filter((f) => /\.txt$/i.test(f.name));
+    S.dirHandle = null;
+    S.library = files.map((f) => ({ path: f.webkitRelativePath.split('/').slice(1).join('/') || f.name, file: f }))
+      .sort((a, b) => a.path.localeCompare(b.path));
+    $('libPath').textContent = '(solo lectura)';
+    renderLibrary(); learnFromLibrary();
+  });
+
+  // arrastrar y soltar
+  const wrap = $('canvasWrap');
+  wrap.addEventListener('dragover', (e) => { e.preventDefault(); $('dropHint').classList.remove('hidden'); });
+  wrap.addEventListener('dragleave', () => $('dropHint').classList.add('hidden'));
+  wrap.addEventListener('drop', async (e) => {
+    e.preventDefault(); $('dropHint').classList.add('hidden');
+    const f = e.dataTransfer.files[0];
+    if (f) { await loadText(await f.text(), f.name, null); return; }
+    const text = e.dataTransfer.getData('text');
+    if (text) await loadText(text, '', null);
+  });
+
+  // pegar código directamente con Ctrl+V si el portapapeles contiene un blueprint
+  window.addEventListener('paste', async (e) => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea') return;
+    const text = (e.clipboardData && e.clipboardData.getData('text')) || '';
+    if (text.trim().startsWith('BLUEPRINT:')) {
+      e.preventDefault();
+      if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos y abrir el blueprint pegado?')) return;
+      if (S.tool === 'paste') setTool('select');
+      await loadText(text, '', null);
+    }
+  });
+
+  window.addEventListener('beforeunload', (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  // ------------------------------------------------------------------ inicio
+  loadTemplates();
+  renderPalette();
+  setTool('select');
+  resize();
+  refresh();
+  window.__dspbp = S; // para depuración
+})();

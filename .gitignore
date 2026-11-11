@@ -1,0 +1,15 @@
+# Python / Node
+__pycache__/
+*.pyc
+node_modules/
+
+# Sistema
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Generados temporales
+tools/missing_icons.json
+
+# Ajustes locales de Claude Code
+.claude/settings.local.json

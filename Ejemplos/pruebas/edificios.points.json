@@ -1,0 +1,12 @@
+{
+  "_info": "Puntos a ras de suelo para calibrar edificios.png: posición en el blueprint (world) y píxel en la captura (px).",
+  "points": [
+    { "world": [15, 4], "px": [640, 128], "what": "monitor de tráfico" },
+    { "world": [12, 2], "px": [712, 88], "what": "divisor" },
+    { "world": [8, 2], "px": [805, 86], "what": "divisor" },
+    { "world": [4, 2], "px": [890, 82], "what": "divisor" },
+    { "world": [24, 7], "px": [437, 190], "what": "torre Tesla" },
+    { "world": [38, 6], "px": [107, 170], "what": "torre Tesla" },
+    { "world": [5, 6], "px": [875, 172], "what": "torre Tesla" }
+  ]
+}
