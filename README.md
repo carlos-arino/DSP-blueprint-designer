@@ -36,7 +36,7 @@ La paleta sigue los grupos del menú de construcción del juego (Power, Collecti
 
 En la paleta, las cintas activan la herramienta de trazado (arrastra para hacer una línea en L, se conecta a cintas existentes). El resto de edificios se colocan con clic.
 
-El botón **🧹 Clasificadores sueltos** borra los clasificadores a los que les falta el inicio o el fin.
+El botón **🧹 Limpiar** borra los clasificadores a los que les falta el inicio o el fin.
 
 ## Sprites y geometría
 

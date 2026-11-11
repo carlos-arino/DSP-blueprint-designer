@@ -850,8 +850,14 @@
       drawHits(COL.find(list, bs));
       }
     }
+    // marcas que acompañan al edificio mientras se arrastra (se dibujan desplazadas)
+    const shifted = (b, fn) => {
+      const [ox, oy] = offsetOf(b);
+      if (!ox && !oy) { fn(); return; }
+      ctx.save(); ctx.translate(ox * S.view.scale, -oy * S.view.scale); fn(); ctx.restore();
+    };
     if (S.tool === 'belt') visible.forEach((b) => drawBeltPorts(b, true));
-    else if (S.view.scale > 6) visible.forEach((b) => { if (!isBelt(b) && !isSorter(b)) drawBeltPorts(b, false); });
+    else if (S.view.scale > 6) visible.forEach((b) => { if (!isBelt(b) && !isSorter(b)) shifted(b, () => drawBeltPorts(b, false)); });
     drawStacks(visible);
     // huecos: todos los visibles con la herramienta de clasificador, o los del edificio seleccionado
     if (S.tool === 'sorter') {
@@ -863,7 +869,8 @@
       }
       if (hover) drawAnchor(hover);
     } else if (S.tool === 'select' && S.sel.size === 1) {
-      drawSlots([...S.sel][0], false);
+      const one = [...S.sel][0];
+      shifted(one, () => drawSlots(one, false));
     }
     if (S.drag && S.drag.type === 'box') {
       const d = S.drag;
@@ -1370,7 +1377,7 @@
     return new Set(bs.filter((b) => isSorter(b) && !set.has(b) && (idx.has(b.inputObjIdx) || idx.has(b.outputObjIdx))));
   }
   // Mueve la selección y los clasificadores enganchados a ella. Si el otro extremo de un clasificador
-  // no se mueve (la cinta), esa conexión se suelta: queda suelto y se puede borrar con "Clasificadores sueltos".
+  // no se mueve (la cinta), esa conexión se suelta: queda suelto y se puede borrar con "Limpiar".
   function moveSelection(dx, dy) {
     if (!S.sel.size || (!dx && !dy)) return;
     const bs = S.bp.buildings, carry = attachedSorters(S.sel);
