@@ -37,6 +37,11 @@ function walk(d) { return fs.readdirSync(d, { withFileTypes: true }).flatMap((e)
     ['cinta por otra fila de la torreta', mk(3005, 0, 0), mk(2001, 0, 1), true],
     ['cinta por el carril del intercambiador', mk(2209, 0, 0), mk(2001, 0, 1), false],
     ['cinta fuera del carril del intercambiador', mk(2209, 0, 0), mk(2001, 1, 1), true],
+    ['cinta elevada sobre ensambladora', mk(2303, 0, 0), mk(2001, 1, 0, 0, 1), true],
+    ['cinta elevada sobre estación (carril de suelo)', mk(2103, 0, 0), mk(2001, 1, 3, 0, 1), true],
+    ['pulverizador: producto a nivel 0 por el centro', mk(2313, 0, 0), mk(2001, 0, 1), false],
+    ['pulverizador: proliferador a nivel 1 por su fila', mk(2313, 0, 0), mk(2001, 0, -1, 0, 1), false],
+    ['pulverizador: cinta a nivel 1 por otra fila', mk(2313, 0, 0), mk(2001, 0, 1, 0, 1), true],
   ];
   for (const [label, a, b, want] of cases) {
     const got = COL.collides(a, b);

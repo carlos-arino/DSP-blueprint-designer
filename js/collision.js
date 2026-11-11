@@ -6,7 +6,8 @@
  *   - divisor, monitor, apilador y pulverizador aceptan cintas debajo o dentro;
  *   - estaciones: base de 7×7 con las esquinas recortadas (cabe una Tesla en cada una);
  *     las cintas solo pueden entrar por los carriles de los puertos (3 casillas centrales de cada lado);
- *   - piezas a distinta altura (almacén sobre divisor…) no chocan;
+ *   - edificios a distinta altura (almacén sobre divisor…) no chocan entre sí, pero todos los edificios
+ *     son altos: una cinta elevada también choca con ellos (salvo por sus carriles de ese nivel);
  *   - ensambladora: cuerpo de 3,2 → con otra ensambladora al lado hace falta un hueco
  *     (cabe una torre Tesla en medio), pero una cinta o una Tesla pueden ir pegadas.
  */
@@ -16,9 +17,10 @@
   const BELTS = new Set([2001, 2002, 2003]);
   const SORTERS = new Set([2011, 2012, 2013, 2014]);
   // edificios que dejan pasar cintas por debajo o por sus puertos
-  const BELT_OK = new Set([2020, 2030, 2040, 2313, 2105, 2107]);
+  const BELT_OK = new Set([2020, 2030, 2040, 2105, 2107]);
   // Carriles: la cinta solo puede entrar en el edificio por estas líneas (puntos de entrada/salida).
-  // [eje, valor] en local (yaw 0): ['x', v] = cintas con x local ≈ v (carril norte-sur), ['y', v] = con y ≈ v (este-oeste).
+  // [eje, valor, nivel] en local (yaw 0): ['x', v] = cintas con x local ≈ v (carril norte-sur), ['y', v] = con y ≈ v
+  // (este-oeste). El nivel (por defecto 0) es la altura de la cinta respecto al edificio.
   const ROW = [['y', 0]], CROSS = [['x', 0], ['y', 0]];
   const LANES = {
     2103: [['x', -1], ['x', 0], ['x', 1], ['y', -1], ['y', 0], ['y', 1]],   // estaciones: 3 puertos por lado
@@ -28,6 +30,9 @@
     2208: [['x', 0]],       // receptor de rayos: norte y sur
     // torretas y torre de interferencias: la munición entra por la fila central
     3001: ROW, 3003: ROW, 3004: ROW, 3005: ROW, 3006: ROW, 3010: ROW,
+    // pulverizador: el producto lo recorre a nivel 0 por el centro (entra por los lados estrechos) y la cinta de
+    // proliferador lo cruza a nivel 1 por una sola fila, a una casilla del centro (Ejemplos: super-magnetic, Almacenes)
+    2313: [['x', 0, 0], ['y', -1, 1]],
   };
 
   // Cuerpo de colisión en local (yaw 0). Sobrescribe la huella de dibujo cuando hace falta.
@@ -69,13 +74,14 @@
       if (lanes) {
         const ang = (st.yaw || 0) * Math.PI / 180, c = Math.cos(ang), sn = Math.sin(ang);
         const dx = bl.x - st.x, dy = bl.y - st.y, lx = dx * c - dy * sn, ly = dx * sn + dy * c;
-        return lanes.some(([axis, v]) => Math.abs((axis === 'x' ? lx : ly) - v) < 0.3);
+        const lvl = Math.round((bl.z || 0) - (st.z || 0));
+        return lanes.some(([axis, v, l = 0]) => l === lvl && Math.abs((axis === 'x' ? lx : ly) - v) < 0.3);
       }
       return false;
     }
 
-    function overlap(p, q) {
-      if (Math.abs(p.z - q.z) > 0.5) return false;
+    function overlap(p, q, anyHeight) {
+      if (!anyHeight && Math.abs(p.z - q.z) > 0.5) return false;
       if (p.r && q.r) return Math.hypot(p.cx - q.cx, p.cy - q.cy) < p.r + q.r - EPS;
       if (p.r || q.r) {
         const c = p.r ? p : q, k = p.r ? q : p;
@@ -98,7 +104,11 @@
     function collides(a, b) {
       if (a === b || exempt(a, b)) return false;
       const p = body(a), q = body(b);
-      return !!(p && q && overlap(p, q));
+      // cinta contra edificio: los edificios son altos, choca a cualquier nivel por encima de su base
+      const beltVsBuilding = BELTS.has(a.itemId) !== BELTS.has(b.itemId);
+      const bl = BELTS.has(a.itemId) ? a : b, bd = bl === a ? b : a;
+      const anyHeight = beltVsBuilding && (bl.z || 0) > (bd.z || 0) - 0.5;
+      return !!(p && q && overlap(p, q, anyHeight));
     }
 
     // Pares que chocan. `others` (opcional): comprobar solo `list` contra `others`.

@@ -11,6 +11,7 @@ const CLONES = {
   2902: [2901, 455],                                       // laboratorio autoevolutivo
   2003: [2002, 37],                                        // cinta Mk.III
   2014: [2013, 483],                                       // clasificador apilador
+  2207: [2206, 46],                                        // acumulador lleno: mismo modelo que el vacío
 };
 
 function walk(d) {

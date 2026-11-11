@@ -96,7 +96,9 @@ El selector de receta del inspector muestra el dibujo de cada una, filtrado por 
 `js/collision.js` da a cada edificio un rectángulo y no deja colocar, mover, pegar ni trazar nada que choque (la acción se deshace y avisa; el fantasma sale en rojo antes). Si el blueprint abierto ya trae choques, se marcan pero no impiden seguir. Es aproximado:
 
 - los clasificadores no chocan; las cintas no chocan entre sí;
-- divisor, monitor, apilador, pulverizador y distribuidor admiten cintas debajo;
+- divisor, monitor, apilador y distribuidor admiten cintas debajo;
+- los edificios son altos: una cinta elevada también choca con ellos, salvo por un carril de su nivel;
+- pulverizador: la cinta del producto lo recorre a nivel 0 por el centro (entra por los lados estrechos) y la del proliferador lo cruza a nivel 1 por una sola fila, a una casilla del centro; por ningún otro sitio;
 - en estaciones, intercambiador de energía, fraccionador, receptor de rayos, torretas (también la de plasma SR) y torre de interferencias la cinta solo puede entrar por sus carriles de entrada/salida (en las torretas, la fila central, por donde entra la munición);
 - piezas a distinta altura (almacén sobre divisor) no chocan;
 - dos ensambladoras necesitan un hueco de 1 entre ellas (cabe una Tesla);

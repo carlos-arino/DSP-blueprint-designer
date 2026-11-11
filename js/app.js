@@ -902,8 +902,9 @@
     if (lanes && !ports.length) {
       const fp = footprint(b);
       ctx.globalAlpha = base;
-      ctx.strokeStyle = '#4fc3f7'; ctx.lineWidth = Math.max(2, s * 0.35); ctx.setLineDash([Math.max(3, s * 0.3), Math.max(3, s * 0.3)]);
-      for (const [axis, v] of lanes) {
+      ctx.lineWidth = Math.max(2, s * 0.35); ctx.setLineDash([Math.max(3, s * 0.3), Math.max(3, s * 0.3)]);
+      for (const [axis, v, lv = 0] of lanes) {
+        ctx.strokeStyle = lv > 0 ? '#e6ecf5' : '#4fc3f7';   // blanco: carril elevado
         const a1 = axis === 'y' ? toWorld(b, fp.ox - fp.w / 2 - 0.3, v) : toWorld(b, v, fp.oy - fp.h / 2 - 0.3);
         const a2 = axis === 'y' ? toWorld(b, fp.ox + fp.w / 2 + 0.3, v) : toWorld(b, v, fp.oy + fp.h / 2 + 0.3);
         const [x1, y1] = w2s(...a1), [x2, y2] = w2s(...a2);
