@@ -2,6 +2,8 @@
 
 Editor web de blueprints de **Dyson Sphere Program**. Sin dependencias ni compilación.
 
+**Úsalo en línea: https://carlos-arino.github.io/DSP-blueprint-designer/** (Chrome o Edge para abrir y guardar directamente en la carpeta del juego).
+
 ## Uso
 
 Abre `index.html` en Chrome o Edge (doble clic), o sirve la carpeta:
