@@ -115,3 +115,23 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 .rtile:hover { border-color: #4fc3f7; }
 .rtile.cur { border-color: #f0a030; }
 .rtile.unknown span { color: #8892a6; }
+
+/* inspector por tipo */
+#inspector h4 { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.insp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.insp-icon { width: 44px; height: 44px; object-fit: contain; flex: none; }
+.insp-name { font-weight: 600; font-size: 15px; }
+.chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chips.col { flex-direction: column; align-items: stretch; }
+.chip { padding: 4px 10px; border-radius: 14px; border: 1px solid var(--c, #3a4252); background: transparent; text-align: left; }
+.chip.on { background: var(--c, #3a4252); color: #0f1218; font-weight: 600; }
+.chips.col .chip.on { color: #fff; background: #2c3445; border-color: var(--accent, #f0a030); }
+.chip:disabled { opacity: .35; cursor: not-allowed; }
+.row.wrap { flex-wrap: wrap; margin-top: 12px; }
+details.adv { margin-top: 14px; border-top: 1px solid #2c3442; padding-top: 8px; }
+details.adv summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.type-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; cursor: pointer; }
+.type-row img, .type-row > span:first-child { width: 22px; height: 22px; object-fit: contain; }
+.type-row .num { margin-left: auto; color: var(--muted); }
+.bad-text { color: #ff6b6b; }
+.wide { margin: 4px 0; }

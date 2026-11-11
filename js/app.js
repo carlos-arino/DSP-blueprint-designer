@@ -191,15 +191,20 @@
     download();
   }
 
+  // El selector de archivos tiene que abrirse directamente con el clic: si antes sale un confirm(),
+  // el navegador ya no lo permite. Por eso se pregunta por los cambios sin guardar después de elegir.
   async function openFile() {
-    if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return;
     if (window.showOpenFilePicker) {
       try {
         const [h] = await window.showOpenFilePicker({ types: [{ description: 'Blueprint DSP', accept: { 'text/plain': ['.txt'] } }] });
         const f = await h.getFile();
+        if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return;
         await loadText(await f.text(), f.name, h);
-      } catch (e) { if (e.name !== 'AbortError') toast(e.message, true); }
-      return;
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        // sin permiso para el selector moderno: se usa el clásico
+      }
     }
     $('fileInput').click();
   }
@@ -210,8 +215,11 @@
       try {
         S.dirHandle = await window.showDirectoryPicker({ id: 'dspbp', mode: 'readwrite' });
         await scanDir();
-      } catch (e) { if (e.name !== 'AbortError') toast(e.message, true); }
-      return;
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        // sin permiso para el selector moderno: se usa el clásico (solo lectura)
+      }
     }
     $('dirInput').click();
   }
@@ -1007,18 +1015,37 @@
   }
 
   // Selecciona la línea de cinta completa (siguiendo conexiones entre cintas)
-  function selectBeltLine(b) {
-    const bs = S.bp.buildings;
+  // Esc (o clic derecho): cerrar el selector, cancelar la herramienta o, si no hay, deseleccionar
+  function escapeAction() {
+    if ($('recipePop')) { closeRecipePicker(); return; }
+    if (S.drag && S.drag.type !== 'pan') { S.drag = null; requestDraw(); return; }
+    if (S.tool !== 'select') setTool('select'); else { S.sel.clear(); refresh(); }
+  }
+  // X+clic: borrar lo que hay bajo el cursor; con Mayús, si es una cinta, toda la cinta conectada del mismo tipo
+  function eraseAt(line) {
+    const h = pick(S.mouse.wx, S.mouse.wy);
+    if (!h) return;
+    const rm = line && isBelt(h) ? beltLine(h, true) : new Set([h]);
+    pushUndo();
+    removeBuildings(rm);
+    S.sel.clear();
+    refresh();
+    toast(rm.size > 1 ? `${rm.size} cintas borradas` : `${IT.itemName(h.itemId)} borrado`);
+  }
+  function selectBeltLine(b) { beltLine(b).forEach((x) => S.sel.add(x)); }
+  // Cintas conectadas a b (hacia delante y hacia atrás); sameType: solo las del mismo tipo (Mk.I/II/III)
+  function beltLine(b, sameType) {
+    const bs = S.bp.buildings, ok = (x) => isBelt(x) && (!sameType || x.itemId === b.itemId);
     const prev = new Map();
-    bs.forEach((x, i) => { if (isBelt(x) && x.outputObjIdx >= 0) { const t = bs[x.outputObjIdx]; if (t && isBelt(t)) { if (!prev.has(t)) prev.set(t, []); prev.get(t).push(x); } } });
+    bs.forEach((x) => { if (ok(x) && x.outputObjIdx >= 0) { const t = bs[x.outputObjIdx]; if (t && ok(t)) { if (!prev.has(t)) prev.set(t, []); prev.get(t).push(x); } } });
     const stack = [b], seen = new Set();
     while (stack.length) {
       const x = stack.pop(); if (seen.has(x)) continue; seen.add(x);
       const t = x.outputObjIdx >= 0 ? bs[x.outputObjIdx] : null;
-      if (t && isBelt(t)) stack.push(t);
+      if (t && ok(t)) stack.push(t);
       (prev.get(x) || []).forEach((p) => stack.push(p));
     }
-    seen.forEach((x) => S.sel.add(x));
+    return seen;
   }
 
   // ------------------------------------------------------------------ creación de edificios
@@ -1550,11 +1577,12 @@
   canvas.addEventListener('mousedown', (ev) => {
     updateMouse(ev);
     if (ev.button === 1 || ev.button === 2 || S.space) {
-      S.drag = { type: 'pan', sx: ev.clientX, sy: ev.clientY, cx: S.view.cx, cy: S.view.cy };
+      S.drag = { type: 'pan', sx: ev.clientX, sy: ev.clientY, cx: S.view.cx, cy: S.view.cy, right: ev.button === 2 };
       canvas.style.cursor = 'grabbing';
       return;
     }
     if (ev.button !== 0 || !S.bp) return;
+    if (S.xHeld) { eraseAt(ev.shiftKey); return; }
     const gx = Math.round(S.mouse.wx), gy = Math.round(S.mouse.wy);
     if (S.tool === 'place') { placeBuilding(gx, gy); return; }
     if (S.tool === 'belt') { S.drag = { type: 'belt', start: [gx, gy] }; requestDraw(); return; }
@@ -1602,10 +1630,15 @@
     if (d || S.tool !== 'select') requestDraw();
   });
 
-  window.addEventListener('mouseup', () => {
+  window.addEventListener('mouseup', (ev) => {
     const d = S.drag; if (!d) return;
     S.drag = null;
-    if (d.type === 'pan') { canvas.style.cursor = S.tool === 'select' ? 'default' : 'crosshair'; return; }
+    if (d.type === 'pan') {
+      canvas.style.cursor = S.tool === 'select' ? 'default' : 'crosshair';
+      // botón derecho sin arrastrar: igual que Esc (arrastrando, desplaza la vista)
+      if (d.right && Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) < 5) escapeAction();
+      return;
+    }
     if (d.type === 'move') {
       if (d.dx || d.dy) { pushUndo(); moveSelection(d.dx, d.dy); refresh(); }
       requestDraw();
@@ -1666,7 +1699,12 @@
     if (ctrl && k === 'a') { ev.preventDefault(); S.sel = new Set(S.bp.buildings); refresh(); return; }
     if (k === ' ') { S.space = true; canvas.style.cursor = 'grab'; ev.preventDefault(); return; }
     if (k === 'delete' || k === 'backspace') { deleteSelection(); return; }
-    if (k === 'escape') { if (S.tool !== 'select') setTool('select'); else { S.sel.clear(); refresh(); } return; }
+    // X mantenida: modo borrar (X+clic borra; Mayús+X+clic borra toda la cinta conectada del mismo tipo)
+    if (k === 'x' && !ctrl) {
+      if (!S.xHeld) { S.xHeld = true; canvas.style.cursor = 'not-allowed'; }
+      return;
+    }
+    if (k === 'escape') { escapeAction(); return; }
     if (k === 'r' && S.tool === 'belt') {
       // en diagonal: alterna entre empezar en horizontal o en vertical
       S.beltFlip = !S.beltFlip; requestDraw();
@@ -1723,7 +1761,9 @@
       pushUndo(); moveSelection(arrows[k][0] * m, arrows[k][1] * m); refresh();
     }
   });
+  window.addEventListener('blur', () => { if (S.xHeld) { S.xHeld = false; canvas.style.cursor = S.tool === 'select' ? 'default' : 'crosshair'; } });
   window.addEventListener('keyup', (ev) => {
+    if (ev.key.toLowerCase() === 'x' && S.xHeld) { S.xHeld = false; canvas.style.cursor = S.tool === 'select' ? 'default' : 'crosshair'; }
     if (ev.key === ' ') { S.space = false; canvas.style.cursor = S.tool === 'select' ? 'default' : 'crosshair'; }
   });
 
@@ -1803,17 +1843,36 @@
     return `<span class="link" data-goto="${idx}">#${idx} ${esc(IT.itemName(t.itemId))}</span>`;
   }
 
-  function inspectorSingle(b) {
+  // ------------------------------------------------------------------ inspector por tipo de edificio
+  const BELT_TIERS = [[2001, 'Mk.I'], [2002, 'Mk.II'], [2003, 'Mk.III']];
+  const SORTER_TIERS = [[2011, 'Mk.I'], [2012, 'Mk.II'], [2013, 'Mk.III'], [2014, 'Apilador']];
+
+  function inspHead(b, sub) {
     const info = IT.buildingInfo(b.itemId);
-    const idx = S.bp.buildings.indexOf(b);
-    const prod = PRODUCTION.has(info.cat) || b.recipeId;
+    const icon = info.icon ? `<img class="insp-icon" src="${info.icon}" alt="">` : '';
+    return `<div class="insp-head">${icon}<div><div class="insp-name">${esc(info.en || info.name)}</div>
+      <div class="muted small">${esc(info.name)}${sub ? ' · ' + sub : ''}</div></div></div>`;
+  }
+  function chips(tiers, isOn, act) {
+    return `<div class="chips">${tiers.map(([id, label]) => `<button type="button" class="chip${isOn(id) ? ' on' : ''}" data-act="${act}" data-id="${id}"
+      style="--c:${BELT_COLORS[id] || '#8892a6'}"${S.templates[id] ? '' : ' disabled title="Sin modelo conocido"'}>${label}</button>`).join('')}</div>`;
+  }
+  function itemButton(act, id, empty) {
+    const name = id ? IT.itemName(id) : empty;
+    return `<button type="button" class="rbtn pick-btn" data-act="${act}">${itemIcon(id, 24)}<span>${esc(name)}</span><span class="muted">▾</span></button>`;
+  }
+  // "Cinta #12" / "Ensamblador Mk.I #3, hueco 7"
+  function endLabel(idx, slot) {
+    const t = S.bp.buildings[idx];
+    if (!t) return '<span class="bad-text">suelto</span>';
+    const sl = !isBelt(t) && slot >= 0 ? `, hueco ${slot}` : '';
+    return `<span class="link" data-goto="${idx}">${esc(IT.buildingInfo(t.itemId).en || IT.itemName(t.itemId))} #${idx}</span>${sl}`;
+  }
+  function advanced(b) {
     const slots = [b.outputToSlot, b.inputFromSlot, b.outputFromSlot, b.inputToSlot, b.outputOffset, b.inputOffset].join(', ');
     const big = b.parameters.length > 64;
-    let html = `<h3>Edificio #${idx}</h3>
-      ${field('Tipo', `<b>${esc(info.name)}</b> <span class="muted">(${b.itemId})</span>`)}
-      ${b.itemId === 2020 && SPLIT[b.modelIndex]
-    ? field('Variante', `<select id="splitModel">${Object.entries(SPLIT).map(([m, v]) => `<option value="${m}"${+m === b.modelIndex ? ' selected' : ''}>${esc(v.name)} (${m})</option>`).join('')}</select><div class="muted small">Tab cambia la variante</div>`)
-    : field('Modelo', `<input type="number" data-f="modelIndex" value="${b.modelIndex}">`)}
+    let html = `<details class="adv"><summary>Avanzado (datos del blueprint)</summary>
+      ${field('Modelo', `<input type="number" data-f="modelIndex" value="${b.modelIndex}">`)}
       <div class="field"><label>Posición</label><div class="xyz">
         <input type="number" step="0.5" data-f="x" value="${r2(b.x)}" title="x">
         <input type="number" step="0.5" data-f="y" value="${r2(b.y)}" title="y">
@@ -1823,46 +1882,164 @@
         <input type="number" step="0.1" data-f="x2" value="${r2(b.x2)}"><input type="number" step="0.1" data-f="y2" value="${r2(b.y2)}">
         <input type="number" step="0.1" data-f="z2" value="${r2(b.z2)}"></div></div>`;
     }
-    html += field('Orientación', `<input type="number" step="90" data-f="yaw" value="${r2(b.yaw)}" title="grados (0 = norte, 90 = este)">`);
-    if (prod) html += field('Receta', recipeButton(b.recipeId));
-    if (isSorter(b) || b.filterId) html += field('Filtro', `<input type="number" data-f="filterId" value="${b.filterId}"><div class="muted small">${esc(IT.itemName(b.filterId))}</div>`);
-    if (isBelt(b)) {
-      const label = b.parameters[0] || 0;
-      html += field('Icono cinta', `<input type="number" id="beltLabel" value="${label}"><div class="muted small">${label ? esc(IT.itemName(label)) : 'sin icono'}</div>`);
-    }
-    html += `<hr class="sep"><h3>Conexiones</h3>
+    html += `${field('Orientación', `<input type="number" step="90" data-f="yaw" value="${r2(b.yaw)}" title="grados (0 = norte, 90 = este)">`)}
       ${field('Salida →', connLabel(b.outputObjIdx))}
       ${field('Entrada ←', connLabel(b.inputObjIdx))}
-      ${field('Huecos', `<input id="slots" value="${slots}" title="outToSlot, inFromSlot, outFromSlot, inToSlot, outOffset, inOffset">`)}
-      <p class="muted small">Huecos: salidaA, entradaDe, salidaDe, entradaA, despl. salida, despl. entrada.</p>
-      <hr class="sep"><h3>Parámetros (${b.parameters.length})</h3>
-      ${big ? '<p class="muted small">Muchos valores (configuración de estación/almacén). Edita con cuidado.</p>' : ''}
-      <textarea id="params" rows="${big ? 6 : 3}">${b.parameters.join(', ')}</textarea>
+      ${field('Huecos', `<input id="slots" value="${slots}" title="salidaA, entradaDe, salidaDe, entradaA, despl. salida, despl. entrada">`)}
+      ${field(`Parámetros (${b.parameters.length})`, `<textarea id="params" rows="${big ? 6 : 2}">${b.parameters.join(', ')}</textarea>`)}
       <div class="row end"><button id="btnApplyParams">Aplicar parámetros</button></div>
-      <hr class="sep">
-      <div class="row"><button id="btnSelSame">Seleccionar iguales</button><button class="danger" id="btnDelOne">Borrar</button></div>`;
+    </details>`;
+    return html;
+  }
+
+  function inspectorSingle(b) {
+    const idx = S.bp.buildings.indexOf(b);
+    const bs = S.bp.buildings;
+    let html = '';
+    if (isBelt(b)) {
+      const line = beltLine(b, true);
+      html += inspHead(b, `#${idx} · nivel ${levelOf(b)}`);
+      html += `<h4>Tipo</h4>${chips(BELT_TIERS, (id) => id === b.itemId, 'tier')}
+        <p class="muted small">Esta cinta. <span class="link" data-act="lineSel">Seleccionar la línea (${line.size})</span> para cambiarla entera.</p>
+        <h4>Icono en la cinta</h4>${itemButton('pickLabel', b.parameters[0] || 0, 'Sin icono')}
+        <h4>Recorrido</h4>
+        ${field('Viene de', bs.some((x) => isBelt(x) && bs[x.outputObjIdx] === b) ? 'otra cinta' : (b.inputObjIdx >= 0 ? endLabel(b.inputObjIdx, b.inputFromSlot) : '<span class="muted">inicio</span>'))}
+        ${field('Va a', b.outputObjIdx >= 0 ? endLabel(b.outputObjIdx, b.outputToSlot) : '<span class="muted">final</span>')}`;
+    } else if (isSorter(b)) {
+      const len = b.parameters[0] || 1;
+      html += inspHead(b, `#${idx}`);
+      html += `<h4>Tipo</h4>${chips(SORTER_TIERS, (id) => id === b.itemId, 'tier')}
+        <h4>Filtro</h4>${itemButton('pickFilter', b.filterId, 'Sin filtro (todo)')}
+        <h4>Conexión</h4>
+        ${field('Desde', endLabel(b.inputObjIdx, b.inputFromSlot))}
+        ${field('Hasta', endLabel(b.outputObjIdx, b.outputToSlot))}
+        ${field('Longitud', `${len} casilla${len > 1 ? 's' : ''}`)}`;
+    } else {
+      const g = IT.RECIPE_GROUP[b.itemId];
+      const below = b.inputObjIdx >= 0 && bs[b.inputObjIdx] && !isBelt(bs[b.inputObjIdx]) && !isSorter(bs[b.inputObjIdx]) &&
+        Math.abs(bs[b.inputObjIdx].x - b.x) < 0.3 && Math.abs(bs[b.inputObjIdx].y - b.y) < 0.3 ? bs[b.inputObjIdx] : null;
+      html += inspHead(b, `#${idx}${b.z > 0.5 ? ` · altura ${r2(b.z)}` : ''}`);
+      if (g || b.recipeId) html += `<h4>Receta <span class="muted small">(E)</span></h4><div class="wide">${recipeButton(b.recipeId)}</div>`;
+      if (b.itemId === 2020 && SPLIT[b.modelIndex]) {
+        html += `<h4>Variante <span class="muted small">(Tab)</span></h4><div class="chips col">${Object.entries(SPLIT).map(([m, v]) =>
+          `<button type="button" class="chip${+m === b.modelIndex ? ' on' : ''}" data-act="split" data-id="${m}">${esc(v.short)} ${esc(v.name)}</button>`).join('')}</div>`;
+      }
+      if (below) html += `<p class="muted small">Apilado sobre ${endLabel(bs.indexOf(below), -1)}.</p>`;
+      const att = attachedSorters(new Set([b]));
+      const ports = beltPorts(b);
+      if (att.size || slotsOf(b).length || ports.length) {
+        html += `<h4>Conexiones</h4>`;
+        if (slotsOf(b).length) html += field('Clasificadores', att.size ? `<span class="link" data-act="selSorters">${att.size} enganchados</span> de ${slotsOf(b).length} huecos` : `0 de ${slotsOf(b).length} huecos`);
+        if (ports.length) {
+          const used = ports.filter((p) => bs.some((x) => isBelt(x) && ((x.outputObjIdx === idx && x.outputToSlot === p.slot) || (x.inputObjIdx === idx && x.inputFromSlot === p.slot))));
+          html += field('Puertos de cinta', `${used.length} de ${ports.length} en uso`);
+        }
+      }
+    }
+    html += `<div class="row wrap">
+        <button id="btnRotSel" title="R">⟳ Girar</button>
+        <button data-act="copyWith" title="Mayús+clic en el edificio">⧉ Copiar</button>
+        <button id="btnSelSame">Seleccionar iguales</button>
+        <button class="danger" id="btnDelOne" title="Supr / X+clic">Borrar</button></div>`;
+    html += advanced(b);
     return html;
   }
 
   function inspectorMulti() {
     const list = [...S.sel];
-    const prodList = list.filter((b) => PRODUCTION.has(IT.buildingInfo(b.itemId).cat));
-    const recipes = new Set(prodList.map((b) => b.recipeId));
-    let html = `<h3>${list.length} edificios seleccionados</h3>
-      <p class="muted small">Clic en un tipo para quedarte solo con ese tipo.</p>
-      ${countTable(list, 'keepitem')}`;
+    const prodList = list.filter((b) => IT.RECIPE_GROUP[b.itemId]);
+    const belts = list.filter(isBelt), sorters = list.filter(isSorter);
+    const counts = new Map();
+    for (const b of list) counts.set(b.itemId, (counts.get(b.itemId) || 0) + 1);
+    const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([id, n]) => {
+      const info = IT.buildingInfo(id);
+      return `<div class="type-row" data-keepitem="${id}">${info.icon ? `<img src="${info.icon}" alt="">` : '<span></span>'}<span class="link" data-keepitem="${id}">${esc(info.en || info.name)}</span><span class="num">${n}</span></div>`;
+    }).join('');
+    let html = `<h3>${list.length} seleccionados</h3><p class="muted small">Clic en un tipo para quedarte solo con ese.</p>${rows}`;
     if (prodList.length) {
-      const r = recipes.size === 1 ? [...recipes][0] : '';
-      html += `<hr class="sep"><h3>Receta (${prodList.length} de producción)</h3>
-        ${field('Receta', recipeButton(r === '' ? null : r))}`;
+      const recipes = new Set(prodList.map((b) => b.recipeId));
+      html += `<h4>Receta (${prodList.length}) <span class="muted small">(E)</span></h4><div class="wide">${recipeButton(recipes.size === 1 ? [...recipes][0] : null)}</div>`;
     }
-    const belts = list.filter(isBelt);
     if (belts.length) {
-      html += `<hr class="sep"><h3>Cintas (${belts.length})</h3>
-        ${field('Cambiar a', `<select id="beltTier"><option value="">—</option>${[2001, 2002, 2003].filter((id) => S.templates[id]).map((id) => `<option value="${id}">${esc(IT.itemName(id))}</option>`).join('')}</select>`)}`;
+      const tiers = new Set(belts.map((b) => b.itemId));
+      html += `<h4>Cintas (${belts.length})</h4>${chips(BELT_TIERS, (id) => tiers.size === 1 && tiers.has(id), 'tier')}`;
     }
-    html += `<hr class="sep"><div class="row"><button id="btnRotSel">⟳ Girar</button><button id="btnCopySel">Copiar</button><button class="danger" id="btnDelSel">Borrar</button></div>`;
+    if (sorters.length) {
+      const tiers = new Set(sorters.map((b) => b.itemId)), filters = new Set(sorters.map((b) => b.filterId));
+      html += `<h4>Clasificadores (${sorters.length})</h4>${chips(SORTER_TIERS, (id) => tiers.size === 1 && tiers.has(id), 'tier')}
+        ${itemButton('pickFilter', filters.size === 1 ? [...filters][0] : 0, filters.size === 1 ? 'Sin filtro (todo)' : 'Filtros distintos')}`;
+    }
+    html += `<div class="row wrap"><button id="btnRotSel">⟳ Girar</button><button id="btnCopySel">⧉ Copiar</button><button class="danger" id="btnDelSel">Borrar</button></div>`;
     return html;
+  }
+
+  // ------------------------------------------------------------------ objetos (filtros, iconos de cinta)
+  // Lista de objetos con dibujo: el producto de cada receta usa el icono de su receta
+  const ITEM_LIST = (() => {
+    const m = new Map();
+    for (const r of Object.values(IT.RECIPE_INFO).sort((a, b) => a.id - b.id)) {
+      if (!r.product || m.has(r.product)) continue;
+      const n = IT.itemName(r.product);
+      m.set(r.product, { id: r.product, name: n.startsWith('#') ? r.name : n, en: r.en || '', icon: r.icon || null });
+    }
+    for (const [id, n] of Object.entries(IT.MATERIALS)) if (!m.has(+id)) m.set(+id, { id: +id, name: n, en: '', icon: null });
+    return [...m.values()].sort((a, b) => a.id - b.id);
+  })();
+  const ITEM_BY_ID = new Map(ITEM_LIST.map((i) => [i.id, i]));
+  function itemIcon(id, size) {
+    const it = ITEM_BY_ID.get(id);
+    if (it && it.icon) return `<img class="ricon" src="${it.icon}" width="${size}" height="${size}" alt="">`;
+    const txt = !id ? '—' : initials(IT.itemName(id).replace(/^#/, '') || String(id));
+    return `<span class="ricon badge g-x" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.38)}px">${esc(txt)}</span>`;
+  }
+  function openItemPicker(btn, current, emptyLabel, onPick) {
+    closeRecipePicker();
+    const pop = document.createElement('div');
+    pop.id = 'recipePop';
+    pop.innerHTML = `<input type="search" id="recipeSearch" placeholder="Buscar objeto…">
+      <div class="rgrid">
+        <button type="button" class="rtile" data-item="0">${itemIcon(0, 36)}<span>${esc(emptyLabel)}</span></button>
+        ${ITEM_LIST.map((i) => `<button type="button" class="rtile${i.id === current ? ' cur' : ''}" data-item="${i.id}" title="${esc(i.name)}${i.en && i.en !== i.name ? ' / ' + esc(i.en) : ''} (${i.id})" data-en="${esc(i.en.toLowerCase())}">${itemIcon(i.id, 36)}<span>${esc(i.name)}</span></button>`).join('')}
+      </div>`;
+    (btn.closest('.field, .wide') || btn).after(pop);
+    const search = pop.querySelector('#recipeSearch');
+    search.focus();
+    search.addEventListener('input', () => {
+      const q = search.value.toLowerCase();
+      pop.querySelectorAll('.rtile').forEach((t) => { t.hidden = q && !t.textContent.toLowerCase().includes(q) && !(t.dataset.en || '').includes(q) && t.dataset.item !== q; });
+    });
+    pop.addEventListener('click', (ev) => {
+      const t = ev.target.closest('.rtile'); if (!t) return;
+      closeRecipePicker(); onPick(+t.dataset.item);
+    });
+  }
+  // Cambiar el tipo (Mk.I/II/III…) de cintas o clasificadores de la selección
+  function setTier(id) {
+    const tpl = S.templates[id]; if (!tpl) return;
+    const fam = BP.BELTS.has(id) ? isBelt : isSorter;
+    const list = [...S.sel].filter(fam);
+    if (!list.length) return;
+    pushUndo();
+    for (const b of list) { b.itemId = id; b.modelIndex = tpl.modelIndex; }
+    refresh();
+  }
+  function inspectorAction(t) {
+    const act = t.dataset.act, b = [...S.sel][0];
+    if (act === 'tier') setTier(+t.dataset.id);
+    else if (act === 'lineSel') { S.sel = beltLine(b, true); refresh(); }
+    else if (act === 'split') { pushUndo(); for (const x of S.sel) if (x.itemId === 2020) x.modelIndex = +t.dataset.id; refresh(); }
+    else if (act === 'selSorters') { S.sel = attachedSorters(new Set([b])); refresh(); }
+    else if (act === 'copyWith') { copySelection(false, true); startPaste(); }
+    else if (act === 'pickFilter') {
+      const cur = [...S.sel].filter(isSorter)[0];
+      openItemPicker(t, cur ? cur.filterId : 0, 'Sin filtro (todo)', (id) => {
+        pushUndo(); for (const x of S.sel) if (isSorter(x)) x.filterId = id; refresh();
+      });
+    } else if (act === 'pickLabel') {
+      openItemPicker(t, b.parameters[0] || 0, 'Sin icono', (id) => {
+        pushUndo(); for (const x of S.sel) if (isBelt(x)) x.parameters = id ? [id, 0] : []; refresh();
+      });
+    }
   }
 
   // ------------------------------------------------------------------ selector de recetas
@@ -1909,7 +2086,7 @@
         ${list.map((r) => `<button type="button" class="rtile${r.id === cur ? ' cur' : ''}${r.known ? '' : ' unknown'}" data-recipe="${r.id}" title="${esc(r.name)}${r.en && r.en !== r.name ? ' / ' + esc(r.en) : ''} (#${r.id})" data-en="${esc((r.en || '').toLowerCase())}">${recipeIcon(r.id, 36)}<span>${esc(r.name)}</span></button>`).join('')}
       </div>
       <div class="row"><label class="small muted">Otra (nº)</label><input type="number" id="recipeOther" min="0" style="width:80px"></div>`;
-    (btn.closest('.field') || btn).after(pop);
+    (btn.closest('.field, .wide') || btn).after(pop);
     const search = pop.querySelector('#recipeSearch');
     search.focus();
     search.addEventListener('input', () => {
@@ -1940,16 +2117,19 @@
   }
   document.addEventListener('mousedown', (ev) => {
     const p = $('recipePop');
-    if (p && !p.contains(ev.target) && ev.target.id !== 'recipeBtn' && !ev.target.closest('#recipeBtn')) closeRecipePicker();
+    if (p && !p.contains(ev.target) && !ev.target.closest('#recipeBtn') && !ev.target.closest('.pick-btn')) closeRecipePicker();
   });
 
   // Delegación de eventos del inspector
   const insp = $('inspector');
   insp.addEventListener('click', (ev) => {
-    const t = ev.target;
+    const t = ev.target.closest('[data-act]') && !ev.target.closest('#recipePop') ? ev.target.closest('[data-act]') : ev.target;
+    if (t.dataset.act) { inspectorAction(t); return; }
     if (t.dataset.selitem) { S.sel = new Set(S.bp.buildings.filter((b) => b.itemId === +t.dataset.selitem)); refresh(); }
-    else if (t.dataset.keepitem) { S.sel = new Set([...S.sel].filter((b) => b.itemId === +t.dataset.keepitem)); refresh(); }
-    else if (t.dataset.goto) {
+    else if (t.dataset.keepitem || t.closest('[data-keepitem]')) {
+      const id = +(t.dataset.keepitem || t.closest('[data-keepitem]').dataset.keepitem);
+      S.sel = new Set([...S.sel].filter((b) => b.itemId === id)); refresh();
+    } else if (t.dataset.goto) {
       const b = S.bp.buildings[+t.dataset.goto];
       if (b) { S.sel = new Set([b]); S.view.cx = b.x; S.view.cy = b.y; refresh(); }
     } else if (t.id === 'btnDelOne' || t.id === 'btnDelSel') deleteSelection();
@@ -2034,6 +2214,7 @@
 
   $('fileInput').addEventListener('change', async (ev) => {
     const f = ev.target.files[0]; if (!f) return;
+    if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) { ev.target.value = ''; return; }
     await loadText(await f.text(), f.name, null);
     ev.target.value = '';
   });

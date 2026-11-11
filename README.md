@@ -25,16 +25,21 @@ python tools/serve.py
 | R | Girar 90° (selección o fantasma al colocar). Con la herramienta de cinta: el codo en diagonal empieza por el otro lado |
 | + / − | Altura de la cinta (también a mitad de trazado: sube o baja en esa casilla) |
 | E | Elegir receta de lo seleccionado |
-| Supr | Borrar |
+| Supr | Borrar lo seleccionado |
+| X+clic | Borrar lo que hay bajo el cursor |
+| Mayús+X+clic | Borrar toda la cinta conectada del mismo tipo |
 | Ctrl+C / X / V / D | Copiar / cortar / pegar / duplicar |
 | Ctrl+Z / Y | Deshacer / rehacer |
 | Ctrl+S | Guardar |
 | F | Encuadrar |
-| Botón derecho/central o Espacio+arrastrar, rueda | Desplazar, zoom |
+| Clic derecho | Igual que Esc (cancelar herramienta / deseleccionar) |
+| Arrastrar con botón derecho/central o Espacio, rueda | Desplazar, zoom |
 
 La paleta sigue los grupos del menú de construcción del juego (Power, Collecting, Logistics, Storage, Production, Transportation, Defense, Research & Dyson Sphere) con el nombre en inglés y el icono de la wiki (`icons/buildings/`). Clic en un grupo para plegarlo o desplegarlo; el buscador acepta inglés, español o número. Las ensambladoras Mk.I/II/III se pintan en amarillo, verde y azul, como cintas y clasificadores; el clasificador apilador, en blanco. Recompositora, hornos de plano y negentropía, planta química cuántica y laboratorio autoevolutivo usan la geometría de su equivalente (modelos de `huww98/dsp_blueprint_editor`).
 
 En la paleta, las cintas activan la herramienta de trazado (arrastra para hacer una línea en L, se conecta a cintas existentes). El resto de edificios se colocan con clic.
+
+El panel de la derecha muestra lo útil de cada cosa: receta (con dibujo) en edificios de producción; tipo Mk.I/II/III e icono en cintas; tipo, filtro, origen, destino y longitud en clasificadores; variante en divisores; clasificadores y puertos en uso. Los datos crudos del blueprint (modelo, posición, huecos, parámetros) quedan plegados en «Avanzado».
 
 El botón **🧹 Limpiar** borra los clasificadores a los que les falta el inicio o el fin.
 
