@@ -2,7 +2,7 @@
 // Uso: node test/collisions.js [carpeta]
 const fs = require('fs'), path = require('path');
 const BP = require('../js/codec.js');
-require('../js/items.js'); require('../js/geometry.js');
+require('../js/items.js'); require('../js/geometry.js'); require('../js/shapes.js');
 const COL = require('../js/collision.js').make(globalThis.DSPGeometry, globalThis.DSPItems);
 const name = (id) => globalThis.DSPItems.itemName(id);
 function walk(d) { return fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name)) : e.name.endsWith('.txt') ? [path.join(d, e.name)] : []); }
@@ -42,6 +42,9 @@ function walk(d) { return fs.readdirSync(d, { withFileTypes: true }).flatMap((e)
     ['pulverizador: producto a nivel 0 por el centro', mk(2313, 0, 0), mk(2001, 0, 1), false],
     ['pulverizador: proliferador a nivel 1 por su fila', mk(2313, 0, 0), mk(2001, 0, -1, 0, 1), false],
     ['pulverizador: cinta a nivel 1 por otra fila', mk(2313, 0, 0), mk(2001, 0, 1, 0, 1), true],
+    ['escudo (rombo): cinta en la esquina', mk(3008, 0, 0), mk(2001, 2, 2), false],
+    ['escudo (rombo): cinta en la punta', mk(3008, 0, 0), mk(2001, 2, 0), true],
+    ['torre de señal (cruz): cinta en la esquina', mk(3007, 0, 0), mk(2001, 2, 1), false],
   ];
   for (const [label, a, b, want] of cases) {
     const got = COL.collides(a, b);

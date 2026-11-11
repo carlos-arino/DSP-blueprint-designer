@@ -14,6 +14,7 @@
 (function (root) {
   'use strict';
   const EPS = 0.05;
+  const CELL = 0.42;   // media casilla de las formas por casillas
   const BELTS = new Set([2001, 2002, 2003]);
   const SORTERS = new Set([2011, 2012, 2013, 2014]);
   // edificios que dejan pasar cintas por debajo o por sus puertos
@@ -46,9 +47,18 @@
   };
 
   function make(geo, items) {
+    const SHAPES = root.DSPShapes || {};
     function body(b) {
       const id = b.itemId;
       if (SORTERS.has(id)) return null;
+      // forma exacta por casillas (js/shapes.js), girada con el edificio (BODY tiene prioridad: Tesla)
+      if (SHAPES[id] && !BODY[id]) {
+        const a = (b.yaw || 0) * Math.PI / 180, c = Math.cos(a), sn = Math.sin(a);
+        const cells = SHAPES[id].cells.map(([lx, ly]) => [b.x + lx * c + ly * sn, b.y - lx * sn + ly * c]);
+        const xs = cells.map((p) => p[0]), ys = cells.map((p) => p[1]);
+        const x0 = Math.min(...xs) - 0.5, x1 = Math.max(...xs) + 0.5, y0 = Math.min(...ys) - 0.5, y1 = Math.max(...ys) + 0.5;
+        return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, hw: (x1 - x0) / 2, hh: (y1 - y0) / 2, cells, z: b.z || 0 };
+      }
       let s = BODY[id];
       if (!s) {
         const g = (geo && geo[id]) || (items && items.buildingInfo(id)) || { w: 1, h: 1 };
@@ -97,6 +107,13 @@
         const inX = x0 >= o.cx + o.hw - o.cut - EPS || x1 <= o.cx - o.hw + o.cut + EPS;
         const inY = y0 >= o.cy + o.hh - o.cut - EPS || y1 <= o.cy - o.hh + o.cut + EPS;
         if (inX && inY) return false;
+      }
+      // formas por casillas: basta con que se solape una casilla
+      if (p.cells || q.cells) {
+        // cada casilla algo por dentro de su borde (0,84), como las cintas: se puede pegar a una ensambladora (3,2)
+        const boxes = (o) => (o.cells ? o.cells.map(([x, y]) => ({ cx: x, cy: y, hw: CELL, hh: CELL })) : [o]);
+        const bq = boxes(q);
+        return boxes(p).some((m) => bq.some((n) => m.hw + n.hw - Math.abs(m.cx - n.cx) > EPS && m.hh + n.hh - Math.abs(m.cy - n.cy) > EPS));
       }
       return true;
     }

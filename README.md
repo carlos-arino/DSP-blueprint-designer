@@ -88,6 +88,10 @@ Los puntos de entrada/salida de cinta se ven siempre (tenues; resaltados con la 
 
 Al colocar un almacén, tanque, laboratorio o distribuidor encima de otro compatible, se apila solo (`DSPStack`): almacén Mk.I sobre almacén o divisor (+2), Mk.II (+3), tanque (+3), laboratorio (+3) y distribuidor sobre almacén (+1,87). El de arriba apunta al de abajo como entrada. Las pilas llevan una insignia ×N.
 
+## Formas exactas
+
+`node tools/gen_shapes.js --show` saca la forma de cada edificio que en `Ejemplos/pruebas/especiales.txt` está rodeado con un anillo de cintas (casillas a las que no se llega desde fuera) y la guarda en `js/shapes.js`. Esas formas se usan para dibujar y para los choques (rombo del generador de escudo, cruz de la torre de señal, 4×7 de las centrales…). Si el anillo tiene un hueco, el edificio se queda con su rectángulo.
+
 ## Plantillas
 
 `node tools/gen_templates.js` regenera `js/templates.js` (modelo, parámetros y huecos por defecto de cada edificio) a partir de `Ejemplos/`. Las variantes (ensambladoras Mk.II/III y recompositora, hornos de plano y negentropía, planta química cuántica, laboratorio autoevolutivo, cinta Mk.III y clasificador apilador) copian a su equivalente con su propio modelo.

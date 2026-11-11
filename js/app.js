@@ -446,7 +446,16 @@
     return true;
   }
 
+  // Formas exactas por casillas (js/shapes.js): su rectángulo envolvente hace de huella
+  const SHAPES = window.DSPShapes || {};
+  const SHAPE_FP = {};
+  for (const [id, sh] of Object.entries(SHAPES)) {
+    const xs = sh.cells.map((c) => c[0]), ys = sh.cells.map((c) => c[1]);
+    const x0 = Math.min(...xs) - 0.5, x1 = Math.max(...xs) + 0.5, y0 = Math.min(...ys) - 0.5, y1 = Math.max(...ys) + 0.5;
+    SHAPE_FP[id] = { w: x1 - x0, h: y1 - y0, ox: (x0 + x1) / 2, oy: (y0 + y1) / 2, cut: 0, cells: sh.cells };
+  }
   function footprint(b) {
+    if (SHAPE_FP[b.itemId]) return SHAPE_FP[b.itemId];
     const g = GEO[b.itemId];
     if (g) return { w: g.w, h: g.h, ox: g.ox || 0, oy: g.oy || 0, cut: g.cut || 0 };
     const info = IT.buildingInfo(b.itemId);
@@ -596,13 +605,15 @@
         const col = TIER[b.itemId] || cat.color;
         const r = Math.min(w, h) * 0.14;
         ctx.fillStyle = '#222935';
-        const body = () => (fp.cut ? octagon(w, h, fp.cut * s) : roundRect(-w / 2, -h / 2, w, h, r));
+        const body = () => (fp.cells ? cellsPath(fp, s) : fp.cut ? octagon(w, h, fp.cut * s) : roundRect(-w / 2, -h / 2, w, h, r));
         body(); ctx.fill();
         ctx.fillStyle = col + '40';
-        roundRect(-w / 2 + s * 0.25, -h / 2 + s * 0.25, w - s * 0.5, h - s * 0.5, r * 0.7); ctx.fill();
+        if (!fp.cells) { roundRect(-w / 2 + s * 0.25, -h / 2 + s * 0.25, w - s * 0.5, h - s * 0.5, r * 0.7); ctx.fill(); }
+        else { body(); ctx.fill(); }
         ctx.strokeStyle = o.selected ? '#fff' : col;
         ctx.lineWidth = o.selected ? 2.5 : Math.max(1, s * 0.08);
-        body(); ctx.stroke();
+        if (fp.cells) cellsEdges(fp, s); else body();
+        ctx.stroke();
         // marca de orientación (lado frontal)
         ctx.fillStyle = col;
         ctx.beginPath();
@@ -696,12 +707,14 @@
   }
 
   // Etiqueta: abreviatura del edificio y receta. Con sprite, solo la receta en una pastilla.
+  // Tamaño del icono respecto a la huella (por defecto 0,85)
+  const ICON_SCALE = { 2201: 1.1, 2312: 0.4 };   // Tesla más grande; silo (huella enorme) más pequeño
   // Icono del edificio ajustado a su huella y, si tiene receta, el dibujo de la receta en la esquina inferior derecha
   function drawIcons(b, fp, cx, cy, s) {
     const img = buildingIcon(b.itemId);
     if (!img || s < 3) return false;
     const side = Math.min(fp.w, fp.h) * s;
-    const k = side * (b.itemId === 2201 ? 1.1 : 0.85);
+    const k = side * (ICON_SCALE[b.itemId] || 0.85);
     ctx.drawImage(img, cx - k / 2, cy - k / 2, k, k);
     const rimg = b.recipeId ? iconImg(b.recipeId) : null;
     if (rimg && s > 4) {
@@ -752,6 +765,24 @@
     } else ctx.fillText(info.short, px, py);
   }
 
+  // Forma por casillas (en local, centrada en la huella): relleno con todas las casillas…
+  function cellsPath(fp, s) {
+    ctx.beginPath();
+    for (const [x, y] of fp.cells) ctx.rect((x - 0.5 - fp.ox) * s, -(y + 0.5 - fp.oy) * s, s, s);
+  }
+  // …y borde solo por los lados exteriores
+  function cellsEdges(fp, s) {
+    const set = new Set(fp.cells.map(([x, y]) => x + ',' + y));
+    const X = (x) => (x - fp.ox) * s, Y = (y) => -(y - fp.oy) * s;
+    const seg = (x1, y1, x2, y2) => { ctx.moveTo(X(x1), Y(y1)); ctx.lineTo(X(x2), Y(y2)); };
+    ctx.beginPath();
+    for (const [x, y] of fp.cells) {
+      if (!set.has(x + ',' + (y + 1))) seg(x - 0.5, y + 0.5, x + 0.5, y + 0.5);
+      if (!set.has(x + ',' + (y - 1))) seg(x - 0.5, y - 0.5, x + 0.5, y - 0.5);
+      if (!set.has((x - 1) + ',' + y)) seg(x - 0.5, y - 0.5, x - 0.5, y + 0.5);
+      if (!set.has((x + 1) + ',' + y)) seg(x + 0.5, y - 0.5, x + 0.5, y + 0.5);
+    }
+  }
   // Rectángulo con las esquinas recortadas (base de las estaciones)
   function octagon(w, h, c) {
     const x = w / 2, y = h / 2;
@@ -958,6 +989,8 @@
       if (k.r) {
         const [cx, cy] = w2s(k.cx, k.cy);
         ctx.arc(cx, cy, k.r * S.view.scale, 0, Math.PI * 2);
+      } else if (k.cells) {
+        for (const [x, y] of k.cells) { const [x0, y0] = w2s(x - 0.5, y + 0.5); ctx.rect(x0, y0, S.view.scale, S.view.scale); }
       } else {
         const [x0, y0] = w2s(k.cx - k.hw, k.cy + k.hh), [x1, y1] = w2s(k.cx + k.hw, k.cy - k.hh);
         ctx.rect(x0, y0, x1 - x0, y1 - y0);
