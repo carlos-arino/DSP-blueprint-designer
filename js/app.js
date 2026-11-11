@@ -54,6 +54,7 @@
 
   // ------------------------------------------------------------------ utilidades
   function toast(msg, err) {
+    S.lastMsg = { msg, err: !!err };
     const t = $('toast');
     t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
     clearTimeout(t._h); t._h = setTimeout(() => { t.className = ''; }, err ? 5000 : 2500);
@@ -2364,6 +2365,186 @@
   });
 
   window.addEventListener('beforeunload', (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  // ------------------------------------------------------------------ API para IA y scripts: window.DSP
+  // Documentada en API.md. Usa la misma lógica que el editor (choques, puertos, apilado, deshacer).
+  // Las operaciones que cambian algo devuelven { ok: true, ... } o { ok: false, error } y no lanzan excepciones.
+  // Los edificios se identifican por su índice (i); los índices cambian al borrar.
+  const DSP = (() => {
+    const bsx = () => S.bp.buildings;
+    const get = (i) => { const b = bsx()[i]; if (!b) throw new Error(`No existe el edificio ${i}`); return b; };
+    const arr = (v) => (Array.isArray(v) ? v : [v]);
+    const kind = (b) => (isBelt(b) ? 'belt' : isSorter(b) ? 'sorter' : 'building');
+    function describe(b) {
+      const i = bsx().indexOf(b), info = IT.buildingInfo(b.itemId);
+      const d = { i, itemId: b.itemId, name: info.en || info.name, kind: kind(b), x: r2(b.x), y: r2(b.y), z: r2(b.z), yaw: r2(b.yaw) };
+      if (isBelt(b)) Object.assign(d, { level: levelOf(b), next: b.outputObjIdx, label: b.parameters[0] || 0 });
+      else if (isSorter(b)) Object.assign(d, { x2: r2(b.x2), y2: r2(b.y2), from: b.inputObjIdx, fromSlot: b.inputFromSlot, to: b.outputObjIdx, toSlot: b.outputToSlot, filter: b.filterId, length: b.parameters[0] || 1 });
+      else {
+        if (IT.RECIPE_GROUP[b.itemId] || b.recipeId) Object.assign(d, { recipe: b.recipeId, recipeName: b.recipeId ? IT.recipeName(b.recipeId) : null });
+        if (b.itemId === 2020) d.model = b.modelIndex;
+        if (b.inputObjIdx >= 0 && !isBelt(bsx()[b.inputObjIdx] || {})) d.stackedOn = b.inputObjIdx;
+      }
+      return d;
+    }
+    // Ejecuta una operación que cambia el blueprint. Sabe si ha funcionado porque deja una entrada para deshacer
+    // (si choca, el editor la deshace y la quita).
+    function act(fn) {
+      try {
+        if (!S.bp) newBlueprint();
+        const u0 = S.undo.length; S.lastMsg = null;
+        const extra = fn() || {};
+        if (extra.error) return { ok: false, error: extra.error };
+        if (S.undo.length <= u0) return { ok: false, error: (S.lastMsg && S.lastMsg.msg) || 'No ha cambiado nada' };
+        return { ok: true, ...extra };
+      } catch (e) { return { ok: false, error: e.message }; }
+    }
+    function withTool(item, level, fn) {
+      const old = { placeItem: S.placeItem, level: S.level, flip: S.beltFlip };
+      S.placeItem = item; if (level !== undefined) S.level = level; S.beltFlip = false;
+      try { return fn(); } finally { S.placeItem = old.placeItem; S.level = old.level; S.beltFlip = old.flip; }
+    }
+    const newIdx = (n0) => bsx().slice(n0).map((b) => bsx().indexOf(b));
+    function anchor(spec) {
+      if (Array.isArray(spec)) { const a = findAnchor(spec[0], spec[1]); if (!a) throw new Error(`Nada donde enganchar en ${spec}`); return a; }
+      if (spec.belt !== undefined) { const b = get(spec.belt); if (!isBelt(b)) throw new Error(`${spec.belt} no es una cinta`); return { kind: 'belt', b, pos: [b.x, b.y] }; }
+      if (spec.building !== undefined) {
+        const b = get(spec.building), sl = slotsOf(b).find((s) => s.slot === spec.slot);
+        if (!sl) throw new Error(`El edificio ${spec.building} no tiene el hueco ${spec.slot} (huecos: ${slotsOf(b).map((s) => s.slot).join(', ') || 'ninguno'})`);
+        return { kind: 'slot', b, slot: sl.slot, pos: sl.pos };
+      }
+      throw new Error('Origen/destino: [x, y], { belt: i } o { building: i, slot: n }');
+    }
+
+    const api = {
+      version: 1,
+      help() {
+        return `DSP Blueprint Designer API (window.DSP) — ver API.md
+Consultar: info() · list({kind,itemId,near:[x,y,r],recipe}) · get(i) · catalog(texto) · recipes(itemId) · slots(i) · ports(i) · collisions()
+Archivo:   load(texto) (async) · export() (async) · newBlueprint(nombre) · setInfo({name,desc})
+Construir: place(itemId,x,y,{yaw,recipe,model}) · belt([[x,y],...],{tier,level}) · sorter(desde,hasta,{tier,filter})
+           duplicate(indices,dx,dy)
+Cambiar:   setRecipe(indices,id) · setFilter(indices,itemId) · setTier(indices,itemId) · setModel(i,modelo) · setLabel(indices,itemId)
+           move(indices,dx,dy) · rotate(indices,veces) · remove(indices) · removeBeltLine(i) · clean()
+Editor:    select(indices) · selection() · undo() · redo() · fit()`;
+      },
+      info() {
+        if (!S.bp) return null;
+        const h = S.bp.header, bs = bsx();
+        return { name: h.shortDesc, desc: h.desc, buildings: bs.length, belts: bs.filter(isBelt).length, sorters: bs.filter(isSorter).length,
+          collisions: (S.hits || []).length, hashOk: S.bp.hashOk, dirty: S.dirty, level: S.level };
+      },
+      newBlueprint(name) {
+        const c = window.confirm; window.confirm = () => true;
+        try { newBlueprint(); } finally { window.confirm = c; }
+        if (name) { S.bp.header.shortDesc = name; setDirty(false); }
+        return { ok: true };
+      },
+      async load(text, name) { return { ok: !!(await loadText(String(text).trim(), name || '', null)) }; },
+      async export() { return S.bp ? exportString() : null; },
+      setInfo({ name, desc } = {}) {
+        return act(() => { pushUndo(); if (name !== undefined) S.bp.header.shortDesc = name; if (desc !== undefined) S.bp.header.desc = desc; setDirty(true); refresh(); });
+      },
+      list(f = {}) {
+        if (!S.bp) return [];
+        return bsx().filter((b) => (!f.kind || kind(b) === f.kind) && (!f.itemId || arr(f.itemId).includes(b.itemId)) &&
+          (f.recipe === undefined || b.recipeId === f.recipe) &&
+          (!f.near || Math.hypot(b.x - f.near[0], b.y - f.near[1]) <= (f.near[2] || 3))).map(describe);
+      },
+      get(i) { const b = get(i); return { ...describe(b), raw: JSON.parse(JSON.stringify(b)) }; },
+      catalog(q) {
+        const s = (q || '').toLowerCase();
+        return Object.values(IT.BUILDINGS).filter((b) => !s || b.en.toLowerCase().includes(s) || b.name.toLowerCase().includes(s) || String(b.id) === s)
+          .map((b) => ({ itemId: b.id, name: b.en, nameEs: b.name, canPlace: !!S.templates[b.id], recipes: !!IT.RECIPE_GROUP[b.id] }));
+      },
+      recipes(itemId) { return IT.recipesFor(itemId).map((r) => ({ id: r.id, name: r.en || r.name, nameEs: r.name, product: r.product || null })); },
+      slots(i) {
+        const b = get(i), used = usedSlots(b);
+        return slotsOf(b).map((s) => ({ slot: s.slot, x: r2(s.pos[0]), y: r2(s.pos[1]), used: used.has(s.slot) }));
+      },
+      ports(i) { return beltPorts(get(i)).map((p) => ({ slot: p.slot, x: r2(p.pos[0]), y: r2(p.pos[1]), dir: p.dir, level: p.level })); },
+      collisions() { return (S.hits || []).map(([a, b]) => ({ a: bsx().indexOf(a), b: bsx().indexOf(b), aName: IT.buildingInfo(a.itemId).en, bName: IT.buildingInfo(b.itemId).en })); },
+
+      place(itemId, x, y, o = {}) {
+        return act(() => {
+          if (!S.templates[itemId]) return { error: `No hay modelo para ${itemId} (catalog() dice cuáles se pueden colocar)` };
+          if (isBeltId(itemId)) return { error: 'Para cintas usa belt()' };
+          if (BP.SORTERS.has(itemId)) return { error: 'Para clasificadores usa sorter()' };
+          const b = makeBuilding(itemId, x, y, o.yaw || 0);
+          if (itemId === 2020) b.modelIndex = o.model || S.splitModel;
+          if (o.recipe !== undefined) b.recipeId = o.recipe;
+          pushUndo();
+          applyStack(b);
+          b.index = bsx().length; bsx().push(b);
+          S.sel = new Set([b]);
+          refresh();
+          return { i: bsx().indexOf(b) };
+        });
+      },
+      belt(points, o = {}) {
+        return act(() => {
+          const pts = points.map((p) => [Math.round(p[0]), Math.round(p[1])]);
+          if (pts.length < 1) return { error: 'Hacen falta puntos' };
+          let cells = [pts[0]];
+          for (let k = 1; k < pts.length; k++) cells = cells.concat(beltPath(pts[k - 1], pts[k]).slice(1));
+          const n0 = bsx().length;
+          withTool(o.tier || 2001, o.level || 0, () => createBeltLine(cells));
+          return { created: newIdx(n0) };
+        });
+      },
+      sorter(from, to, o = {}) {
+        return act(() => {
+          const a = anchor(from), c = anchor(to), n0 = bsx().length;
+          withTool(o.tier || 2011, undefined, () => createSorter(a, c));
+          const s = bsx()[n0];
+          if (s && o.filter) s.filterId = o.filter;
+          return s ? { i: n0 } : {};
+        });
+      },
+      duplicate(indices, dx, dy) {
+        return act(() => {
+          S.sel = new Set(arr(indices).map(get));
+          copySelection(false, true);
+          const main = [...S.sel].filter((b) => !isSorter(b));
+          const [cx, cy] = centroid(main.length ? main : [...S.sel]);
+          const n0 = bsx().length;
+          placeRow([cx + dx, cy + dy], [cx + dx, cy + dy]);
+          return { created: newIdx(n0) };
+        });
+      },
+      setRecipe(indices, id) { return act(() => { S.sel = new Set(arr(indices).map(get)); applyRecipe(id); }); },
+      setFilter(indices, itemId) {
+        return act(() => { const l = arr(indices).map(get).filter(isSorter); if (!l.length) return { error: 'Ningún clasificador' }; pushUndo(); l.forEach((b) => { b.filterId = itemId || 0; }); refresh(); });
+      },
+      setTier(indices, itemId) { return act(() => { S.sel = new Set(arr(indices).map(get)); setTier(itemId); }); },
+      setModel(i, model) {
+        return act(() => { const b = get(i); if (b.itemId === 2020 && !SPLIT[model]) return { error: `Modelos de divisor: ${Object.keys(SPLIT).join(', ')}` }; pushUndo(); b.modelIndex = model; refresh(); });
+      },
+      setLabel(indices, itemId) {
+        return act(() => { const l = arr(indices).map(get).filter(isBelt); if (!l.length) return { error: 'Ninguna cinta' }; pushUndo(); l.forEach((b) => { b.parameters = itemId ? [itemId, 0] : []; }); refresh(); });
+      },
+      move(indices, dx, dy) { return act(() => { S.sel = new Set(arr(indices).map(get)); pushUndo(); moveSelection(Math.round(dx), Math.round(dy)); refresh(); }); },
+      rotate(indices, times = 1) {
+        return act(() => {
+          const list = arr(indices).map(get); pushUndo();
+          const [cx, cy] = centroid(list.filter((b) => !isSorter(b)).length ? list.filter((b) => !isSorter(b)) : list);
+          list.forEach((b) => rotateBuilding(b, cx, cy, ((times % 4) + 4) % 4));
+          S.sel = new Set(list); refresh();
+        });
+      },
+      remove(indices) { return act(() => { const set = new Set(arr(indices).map(get)); pushUndo(); removeBuildings(set); S.sel.clear(); refresh(); return { removed: set.size }; }); },
+      removeBeltLine(i) { return act(() => { const b = get(i); if (!isBelt(b)) return { error: `${i} no es una cinta` }; const set = beltLine(b, true); pushUndo(); removeBuildings(set); S.sel.clear(); refresh(); return { removed: set.size }; }); },
+      clean() { return act(() => { cleanSorters(); }); },
+      select(indices) { S.sel = new Set(arr(indices).map(get)); refresh(); return { ok: true }; },
+      selection() { return [...S.sel].map((b) => bsx().indexOf(b)); },
+      undo() { undo(); return { ok: true }; },
+      redo() { redo(); return { ok: true }; },
+      fit() { fitView(); return { ok: true }; },
+    };
+    return api;
+  })();
+  const isBeltId = (id) => BP.BELTS.has(id);
+  window.DSP = DSP;
 
   // ------------------------------------------------------------------ inicio
   loadTemplates();

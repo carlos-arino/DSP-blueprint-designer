@@ -1,0 +1,134 @@
+# API de DSP Blueprint Designer
+
+Dos formas de que una IA (o un script) cree y modifique blueprints de **Dyson Sphere Program**:
+
+1. **`window.DSP` en el editor web.** La más completa: usa la misma lógica que el editor (choques, huecos, puertos de cinta, apilado, deshacer) y el resultado se ve en pantalla. Para IAs que controlan un navegador.
+2. **`tools/bp.js` en la línea de comandos.** Convierte un blueprint a JSON legible y de vuelta. Para IAs que editan archivos.
+
+---
+
+## 1. `window.DSP` (navegador)
+
+Abre el editor (https://carlos-arino.github.io/DSP-blueprint-designer/ o `python tools/serve.py`) y ejecuta JavaScript en la página. Por ejemplo, desde la consola o con la herramienta de JavaScript de tu navegador automatizado:
+
+```js
+DSP.help()                       // resumen de todos los métodos
+DSP.newBlueprint('Motores')
+const a = DSP.place(2303, 0, 0, { recipe: 97 })          // ensambladora con Motor eléctrico → { ok: true, i: 0 }
+DSP.place(2201, 2, 0)                                       // torre Tesla
+DSP.belt([[-3, 3], [7, 3]], { tier: 2002 })                 // cinta Mk.II de oeste a este en y = 3
+const inBelt = DSP.list({ kind: 'belt', near: [0, 3, 0.5] })[0].i
+DSP.sorter({ belt: inBelt }, { building: a.i, slot: 1 })    // de la cinta al hueco 1 de la ensambladora
+const code = await DSP.export()                             // texto BLUEPRINT:... listo para pegar en el juego
+```
+
+### Convenciones
+
+- **Coordenadas en casillas.** `x` crece hacia el este, `y` hacia el norte. Los edificios van en enteros.
+- **`yaw`** en grados, en sentido horario desde el norte: 0 = norte, 90 = este, 180 = sur, 270 = oeste.
+- **Edificios por índice `i`**, que es su posición en la lista. Los índices **cambian al borrar**, así que vuelve a consultar con `list()` después de `remove()`.
+- **Niveles de cinta:** 0 es el suelo, 1 elevada, etc. Una subida o bajada son dos cintas en la misma casilla.
+- **Resultados.** Los métodos que cambian algo devuelven `{ ok: true, ... }` o `{ ok: false, error: 'motivo' }`, y nunca lanzan excepciones. Si una acción choca, no se aplica y el error lo explica.
+- **Deshacer.** Todo se puede deshacer con `DSP.undo()`, y también con Ctrl+Z en el editor.
+
+### Consultar
+
+| Método | Devuelve |
+|---|---|
+| `info()` | `{ name, desc, buildings, belts, sorters, collisions, hashOk, dirty }` |
+| `list({ kind, itemId, near: [x, y, r], recipe })` | Edificios que cumplen el filtro (todos opcionales). `kind`: `'building'`, `'belt'` o `'sorter'`. `itemId` puede ser una lista |
+| `get(i)` | Descripción del edificio `i` y `raw`, con todos sus campos del blueprint |
+| `catalog(texto)` | Edificios disponibles: `{ itemId, name, nameEs, canPlace, recipes }`. `canPlace: false` significa que falta su modelo; abre un blueprint que lo contenga |
+| `recipes(itemId)` | Recetas que admite ese edificio: `{ id, name, nameEs, product }` |
+| `slots(i)` | Huecos de clasificador del edificio: `{ slot, x, y, used }` |
+| `ports(i)` | Puertos de cinta (divisor, estaciones, intercambiador…): `{ slot, x, y, dir, level }` |
+| `collisions()` | Pares que chocan en el blueprint actual |
+
+En `list()` y `get()` cada edificio trae `i, itemId, name, kind, x, y, z, yaw` y además:
+- **cintas:** `level`, `next` (índice de la siguiente o −1) y `label`;
+- **clasificadores:** `from`, `fromSlot`, `to`, `toSlot`, `filter`, `length` y `x2, y2`;
+- **producción:** `recipe` y `recipeName`;
+- **divisores:** `model`;
+- **apilados:** `stackedOn`.
+
+### Construir
+
+| Método | Notas |
+|---|---|
+| `place(itemId, x, y, { yaw, recipe, model })` | Coloca un edificio. Si en esa casilla hay uno compatible, **se apila** encima (almacenes, tanques, laboratorios, distribuidor sobre almacén). `model` sirve para el divisor: 38 (4 lados), 39 (doble altura N-S), 40 (cruce) |
+| `belt([[x, y], ...], { tier, level })` | Traza una cinta por esos puntos. Entre puntos va en L: primero el eje más largo. `tier`: 2001, 2002 o 2003. Se engancha sola a cintas del mismo nivel en los extremos, a cintas de otro nivel en la misma casilla (subida o bajada) y a puertos de cinta. Devuelve `created` con los índices nuevos |
+| `sorter(desde, hasta, { tier, filter })` | Clasificador de 1 a 3 casillas. `desde` y `hasta` pueden ser `{ belt: i }`, `{ building: i, slot: n }` o `[x, y]`, en cuyo caso busca el hueco o la cinta más cercana. `tier`: 2011, 2012, 2013 o 2014 (apilador). El desplazamiento sobre la cinta se calcula solo |
+| `duplicate(indices, dx, dy)` | Copia esos edificios, con su receta y sus clasificadores, desplazados `dx, dy` |
+
+### Cambiar
+
+| Método | Notas |
+|---|---|
+| `setRecipe(indices, recipeId)` | `0` para quitarla |
+| `setFilter(indices, itemId)` | Clasificadores. `0` para quitar el filtro |
+| `setTier(indices, itemId)` | Cambia el nivel Mk.I/II/III de cintas o clasificadores |
+| `setModel(i, modelo)` | Variante del divisor |
+| `setLabel(indices, itemId)` | Icono que muestra una cinta |
+| `move(indices, dx, dy)` | Los clasificadores enganchados se mueven con su edificio. Las cintas no se estiran: si sueltas una cinta encima de otra del mismo nivel, la sustituye |
+| `rotate(indices, veces)` | 90° en sentido horario por vez, alrededor del centro del grupo |
+| `remove(indices)` · `removeBeltLine(i)` | Borrar. `removeBeltLine` borra toda la cinta conectada del mismo tipo |
+| `clean()` | Borra los clasificadores sueltos (sin inicio o sin fin) |
+| `setInfo({ name, desc })` | Nombre y descripción del blueprint |
+
+### Archivo y editor
+
+| Método | Notas |
+|---|---|
+| `newBlueprint(nombre)` | Blueprint vacío, sin preguntar |
+| `await load(texto)` | Abre un código `BLUEPRINT:...` |
+| `await export()` | Devuelve el código `BLUEPRINT:...` |
+| `select(indices)` · `selection()` · `fit()` · `undo()` · `redo()` | Selección, encuadre y deshacer en la vista |
+
+### Reglas que aplica (igual que el editor)
+
+- **Choques.** No se puede colocar nada que choque.
+  - Las cintas no chocan entre sí si van a distinto nivel.
+  - Una cinta solo atraviesa un edificio por sus carriles: puertos de estaciones e intercambiador, fila de munición de las torretas, carriles del pulverizador (producto a nivel 0 por el centro, proliferador a nivel 1).
+  - Dos ensambladoras necesitan una casilla libre entre ellas; ahí cabe una Tesla.
+- **Huecos de clasificador.** Horno y ensambladora tienen 6 (0, 1, 2 al norte y 6, 7, 8 al sur). Consúltalos siempre con `slots(i)`.
+- **Recetas.** Cada edificio solo admite las de su grupo: hornos, ensambladoras, refinería, planta química, colisionador, fraccionador o laboratorio. Consúltalas con `recipes(itemId)`.
+
+### Edificios más usados
+
+| itemId | Edificio | itemId | Edificio |
+|---|---|---|---|
+| 2001–2003 | Conveyor Belt Mk.I–III | 2011–2014 | Sorter Mk.I–III, Pile Sorter |
+| 2020 | Splitter | 2101, 2102 | Depot Mk.I, Mk.II |
+| 2103, 2104 | Planetary / Interstellar Logistics Station | 2107 | Logistics Distributor |
+| 2201 | Tesla Tower | 2302 | Arc Smelter |
+| 2303–2305 | Assembling Machine Mk.I–III | 2308 | Oil Refinery |
+| 2309 | Chemical Plant | 2310 | Miniature Particle Collider |
+| 2313 | Spray Coater | 2314 | Fractionator |
+| 2901 | Matrix Lab | | |
+
+La lista completa está en `DSP.catalog()`.
+
+---
+
+## 2. `tools/bp.js` (línea de comandos)
+
+```bash
+node tools/bp.js decode BP.txt  bp.json     # blueprint → JSON
+node tools/bp.js encode bp.json BP.txt      # JSON → blueprint (hash recalculado)
+node tools/bp.js check  BP.txt              # hash, choques, clasificadores sueltos (código de salida 2 si hay problemas)
+node tools/bp.js info   BP.txt              # resumen por tipo de edificio
+```
+
+El JSON es el blueprint completo. Cada edificio lleva `_name`, que es solo informativo y se ignora al codificar. Campos principales de cada edificio:
+
+| Campo | Significado |
+|---|---|
+| `itemId`, `modelIndex` | Tipo de edificio y modelo 3D. Copia el `modelIndex` de otro edificio igual (o de `js/templates.js`) |
+| `x, y, z, yaw` | Posición y giro. Los clasificadores tienen además `x2, y2, z2, yaw2`: el extremo final |
+| `outputObjIdx`, `inputObjIdx` | Índices de los edificios conectados (−1 si no hay) |
+| `outputToSlot`, `inputFromSlot` | Hueco o puerto del edificio conectado. En las cintas, `outputToSlot` es 1 al enlazar con otra cinta |
+| `outputOffset`, `inputOffset` | Desplazamiento del clasificador sobre la cinta: `floor(20 × distancia en el sentido de avance)` |
+| `recipeId`, `filterId` | Receta (producción) y filtro (clasificadores) |
+| `parameters` | Clasificador: `[longitud]`. Cinta: `[icono, 0]` o `[]`. Almacenes y estaciones: su configuración |
+
+Si borras o reordenas edificios en el JSON, ajusta los índices de conexión (o pon −1). Después pasa `check` para comprobar que no hay choques ni clasificadores sueltos.
