@@ -818,6 +818,10 @@
           const [x, y] = w2s(q.pos[0] - q.dir[0] * 0.75 + ox, q.pos[1] - q.dir[1] * 0.75 + oy);
           drawItemBadge(slot.item, x, y, Math.max(9, s * 0.6));
         }
+      } else if (b.itemId === 2107 && b.filterId) {
+        // producto del distribuidor logístico, en su esquina noroeste (la noreste es para la insignia ×N de la pila)
+        const [x, y] = w2s(b.x - 0.7 + ox, b.y + 0.7 + oy);
+        drawItemBadge(b.filterId, x, y, Math.max(11, s * 0.8));
       } else if (b.itemId === 2020 && b.filterId) {
         // en la esquina noreste, para no tapar la cruz del divisor
         const [x, y] = w2s(b.x + 0.42 + ox, b.y + 0.42 + oy);
@@ -1272,10 +1276,53 @@
       if (nxt && nxt !== prev) { prev.outputObjIdx = bs.indexOf(nxt); prev.outputToSlot = 1; }
     }
     if (!created.length) { S.undo.pop(); return; }
+    // puertos de estación: el sentido lo marca la cinta; en las salidas se pregunta qué producto sale
+    const outSt = startPort && PR.STATION_SLOTS[startPort.b.itemId] ? startPort : null;
+    if (endPort && PR.STATION_SLOTS[endPort.b.itemId]) PR.write(endPort.b, { ports: Object.assign([], { [endPort.slot]: { dir: 2, storage: 0 } }) });
+    if (outSt) PR.write(outSt.b, { ports: Object.assign([], { [outSt.slot]: { dir: 1 } }) });
     S.sel = new Set(created);
     refresh();
     toast(`${created.length} cintas añadidas a nivel ${L}${msg}`);
+    if (outSt) openPortChooser(outSt.b, outSt.slot);
   }
+
+  // ------------------------------------------------------------------ producto de salida de una estación
+  // Botones como el selector del juego: «Nada», y #1…#n con el icono del producto (o el número si está vacío)
+  function portChoices(st, k) {
+    const p = PR.read(st), cur = p.ports[k] ? p.ports[k].storage : 0;
+    const tile = (v, inner, title) => `<button type="button" class="otile${v === cur ? ' on' : ''}" data-act="portOut" data-st="${S.bp.buildings.indexOf(st)}" data-k="${k}" data-v="${v}" title="${esc(title)}">${inner}</button>`;
+    return `<div class="otiles">${tile(0, '<span class="onone">Nada</span>', 'No sale nada')}${p.slots.map((sl, i) => tile(i + 1,
+      sl.item ? `${itemIcon(sl.item, 30)}<sup>#${i + 1}</sup>` : `<span class="onum">#${i + 1}</span>`,
+      sl.item ? `#${i + 1} ${IT.itemName(sl.item)}` : `#${i + 1} (vacío)`)).join('')}</div>`;
+  }
+  function setPortOut(st, k, v) {
+    pushUndo(); PR.write(st, { ports: Object.assign([], { [k]: { dir: 1, storage: v } }) }); refresh();
+  }
+  function closePortChooser() { const p = $('portPop'); if (p) p.remove(); }
+  function openPortChooser(st, k) {
+    closePortChooser();
+    const pop = document.createElement('div');
+    pop.id = 'portPop';
+    pop.innerHTML = `<div class="ptitle">¿Qué sale por esta cinta?</div>${portChoices(st, k)}<div class="muted small">${esc(IT.itemName(st.itemId))} · puerto ${k} · Esc: nada</div>`;
+    $('canvasWrap').appendChild(pop);
+    const wr = $('canvasWrap').getBoundingClientRect();
+    pop.style.left = Math.max(4, Math.min(S.mouse.sx + 12, wr.width - pop.offsetWidth - 4)) + 'px';
+    pop.style.top = Math.max(4, Math.min(S.mouse.sy + 12, wr.height - pop.offsetHeight - 4)) + 'px';
+    pop.addEventListener('mousedown', (ev) => ev.stopPropagation());
+    pop.addEventListener('click', (ev) => {
+      const t = ev.target.closest('[data-act="portOut"]'); if (!t) return;
+      // la elección va con la cinta recién dibujada (mismo paso de deshacer)
+      PR.write(st, { ports: Object.assign([], { [k]: { dir: 1, storage: +t.dataset.v } }) });
+      closePortChooser(); refresh();
+    });
+  }
+  document.addEventListener('mousedown', (ev) => { const p = $('portPop'); if (p && !p.contains(ev.target)) closePortChooser(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && $('portPop')) { ev.stopPropagation(); closePortChooser(); } }, true);
+  // Teclas 0…5 con el selector abierto: elegir sin ratón
+  document.addEventListener('keydown', (ev) => {
+    const p = $('portPop'); if (!p || !/^[0-9]$/.test(ev.key)) return;
+    const t = p.querySelector(`[data-v="${ev.key}"]`); if (t) { ev.preventDefault(); ev.stopPropagation(); t.click(); }
+  }, true);
 
   // ------------------------------------------------------------------ clasificadores
   function usedSlots(b) {
@@ -2044,10 +2091,7 @@
       // Cinta que sale de una estación: qué producto saca
       const st = bs[b.inputObjIdx];
       if (st && PR.STATION_SLOTS[st.itemId] && b.inputFromSlot >= 0 && b.inputFromSlot < 12) {
-        const sp = PR.read(st), k = b.inputFromSlot;
-        const opts = [[0, '—'], ...sp.slots.map((s, i) => [i + 1, s.item ? IT.itemName(s.item) : `Producto ${i + 1} (vacío)`])];
-        html += field('Producto que sale', `<select data-stport="${b.inputObjIdx}:${k}">${opts.map(([v, l]) =>
-          `<option value="${v}"${v === sp.ports[k].storage ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`);
+        html += `<h4>Producto que sale de la estación</h4>${portChoices(st, b.inputFromSlot)}`;
       }
     } else if (isSorter(b)) {
       const len = b.parameters[0] || 1;
@@ -2200,11 +2244,10 @@
         const pb = portBelts(b), used = Object.keys(pb).map(Number).filter((k) => k < 12).sort((x, y) => x - y);
         const side = (slot) => { const pt = (BELT_PORTS[id] || []).find((q) => q[0] === slot); return pt ? SIDE_ES[pt[3]] : ''; };
         if (used.length) {
-          const opts = [[0, '—'], ...p.slots.map((s, i) => [i + 1, s.item ? IT.itemName(s.item) : `Producto ${i + 1} (vacío)`])];
           h += `<h4>Puertos de cinta</h4>${used.map((k) => {
             const c = pb[k], label = `Puerto ${k} <span class="muted small">${side(k)}</span>`;
             if (c.dir === 'in') return field(label, `<span class="muted">Entrada · <span class="link" data-goto="${c.belt}">cinta #${c.belt}</span></span>`);
-            return field(label, `<div class="row">${pSelect(`ports.${k}.storage`, opts, p.ports[k].storage)}<span class="link small" data-goto="${c.belt}">#${c.belt}</span></div>`);
+            return `<div class="portrow"><div class="row"><span>${label}</span><span class="link small" data-goto="${c.belt}">cinta #${c.belt}</span></div>${portChoices(b, k)}</div>`;
           }).join('')}<p class="muted small">En las salidas se elige qué producto sale a la cinta.</p>`;
         }
       }
@@ -2344,6 +2387,7 @@
   function inspectorAction(t) {
     const act = t.dataset.act, b = [...S.sel][0];
     if (act === 'setProp' || act === 'pickProp') { propAction(t); return; }
+    if (act === 'portOut') { setPortOut(S.bp.buildings[+t.dataset.st], +t.dataset.k, +t.dataset.v); return; }
     if (act === 'tier') setTier(+t.dataset.id);
     else if (act === 'lineSel') { S.sel = beltLine(b, true); refresh(); }
     else if (act === 'split') { pushUndo(); for (const x of S.sel) if (x.itemId === 2020) x.modelIndex = +t.dataset.id; refresh(); }
@@ -2474,10 +2518,6 @@
     if (t.id === 'hLayout') { pushUndo(); h.layout = parseInt(t.value, 10) || 10; return; }
     if (t.dataset.icon !== undefined) { pushUndo(); h.icons[+t.dataset.icon] = parseInt(t.value, 10) || 0; renderInspector(); return; }
     if (t.dataset.p) { propChange(t); return; }
-    if (t.dataset.stport) {
-      const [si, k] = t.dataset.stport.split(':').map(Number), st = S.bp.buildings[si];
-      pushUndo(); PR.write(st, { ports: Object.assign([], { [k]: { dir: 1, storage: +t.value } }) }); refresh(); return;
-    }
     if (t.dataset.f) {
       const b = [...S.sel][0], f = t.dataset.f, v = parseFloat(t.value);
       if (!Number.isFinite(v)) return;

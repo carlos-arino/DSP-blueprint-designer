@@ -95,7 +95,7 @@ En `list()` y `get()` cada edificio trae `i, itemId, name, kind, x, y, z, yaw` y
 | Receptor de rayos (2208) | `mode`: `'power'` (energía) o `'photon'` (fotones críticos) |
 | Distribuidor logístico (2107) | `item` (producto), `icarus` (2 dar y recoger, 1 solo dar, 3 solo recoger, 0 no; 1 y 3 sin comprobar en el juego), `distributors` (0 no, 1 ofrecer, 2 pedir), `chargeMW`, `autoBots` |
 | Almacén Mk.I/II (2101, 2102) | `usable` (casillas que se pueden usar; el resto quedan bloqueadas), `filters` (filtro de cada casilla, 0 = libre) |
-| Estaciones (2103, 2104) | `slots`: `[{ item, local, remote, max }]` con 0 almacén, 1 ofrecer, 2 pedir · `ports`: 12 puertos `{ dir, storage }` (dir 1 sale, 2 entra; storage = nº de producto 1…n que sale por ese puerto) · `chargeMW`, `droneRange` (grados), `droneMinLoad`, `vesselRangeLY` (100 = ∞), `vesselMinLoad`, `warpAU`, `warpersRequired`, `orbitalCollector`, `outgoingCount` (0 = límite de tecnología), `autoDrones`, `autoVessels` |
+| Estaciones (2103, 2104) | `slots`: `[{ item, local, remote, max }]` con 0 almacén, 1 ofrecer, 2 pedir (al poner un producto en una casilla vacía, el límite es 5000 en la PLS y 10000 en la ILS si no se da `max`) · `ports`: 12 puertos `{ dir, storage }` (dir 1 sale, 2 entra; storage = nº de producto 1…n que sale por ese puerto) · `chargeMW`, `droneRange` (grados), `droneMinLoad`, `vesselRangeLY` (100 = ∞), `vesselMinLoad`, `warpAU`, `warpersRequired`, `orbitalCollector`, `outgoingCount` (0 = límite de tecnología), `autoDrones`, `autoVessels` |
 | Divisor (2020) | `priority`: 4 booleanos por puerto (0 N, 1 E, 2 S, 3 O en el de 4 lados); `filter`: producto que sale por la salida con prioridad |
 
 ### Reglas que aplica (igual que el editor)

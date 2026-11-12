@@ -21,6 +21,7 @@
   const AU = 40000, LY = 60 * AU;
   const STATION_SLOTS = { 2103: 4, 2104: 5 };
   const DEPOT_SLOTS = { 2101: 30, 2102: 60 };
+  const DEFAULT_MAX = { 2103: 5000, 2104: 10000 };
   const PORT0 = 192, SET0 = 320;
   const r2 = (v) => Math.round(v * 100) / 100;
 
@@ -94,6 +95,8 @@
         o.slots.forEach((s, i) => {
           if (!s || i >= n) return;
           const k = 6 * i;
+          // producto nuevo en una casilla vacía: límite por defecto (PLS 5000, ILS 10000)
+          if ('item' in s && s.item && !p[k] && !('max' in s)) p[k + 3] = DEFAULT_MAX[id];
           if ('item' in s) p[k] = s.item | 0;
           if ('local' in s) p[k + 1] = s.local | 0;
           if ('remote' in s) p[k + 2] = s.remote | 0;
