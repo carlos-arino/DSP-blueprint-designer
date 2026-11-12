@@ -1,6 +1,10 @@
-/* Catálogo de objetos/edificios de DSP (nombres en español, tamaños aproximados para dibujar). */
+/* Catálogo de objetos/edificios de DSP (nombres en español e inglés, tamaños aproximados para dibujar).
+   Los nombres (BUILDINGS[id].name, RECIPE_INFO[id].name, itemName…) salen en el idioma de js/i18n.js;
+   .es y .en dan siempre el de cada idioma. */
 (function (root) {
   'use strict';
+  const isEn = () => !root.DSPI18n || root.DSPI18n.lang === 'en';
+  const tr = (k, v, fb) => (root.DSPI18n ? root.DSPI18n.t(k, v) : fb);
 
   // Categorías de edificios y su color en el lienzo
   const CATS = {
@@ -104,15 +108,17 @@
 
   // Grupos del menú de construcción del juego (wiki: Buildings → Groupings), en su orden
   const MENU = [
-    { key: 'power', name: 'Power', ids: [2201, 2202, 2212, 2203, 2204, 2205, 2213, 2211, 2210, 2206, 2207] },
-    { key: 'collecting', name: 'Collecting', ids: [2301, 2316, 2306, 2307, 2105] },
-    { key: 'logistics', name: 'Logistics', ids: [2001, 2002, 2003, 2011, 2012, 2013, 2014, 2020, 2040, 2030, 2313] },
-    { key: 'storage', name: 'Storage', ids: [2101, 2102, 2106] },
-    { key: 'production', name: 'Production', ids: [2302, 2315, 2319, 2303, 2304, 2305, 2318, 2308, 2309, 2317, 2314, 2310] },
-    { key: 'transportation', name: 'Transportation', ids: [2107, 2103, 2104, 2209] },
-    { key: 'defense', name: 'Defense', ids: [3001, 3002, 3003, 3004, 3010, 3005, 3006, 3007, 3008, 3009] },
-    { key: 'cosmo', name: 'Research & Dyson Sphere', ids: [2901, 2902, 2311, 2312, 2208] },
+    { key: 'power', es: 'Energía', en: 'Power', ids: [2201, 2202, 2212, 2203, 2204, 2205, 2213, 2211, 2210, 2206, 2207] },
+    { key: 'collecting', es: 'Extracción', en: 'Collecting', ids: [2301, 2316, 2306, 2307, 2105] },
+    { key: 'logistics', es: 'Logística', en: 'Logistics', ids: [2001, 2002, 2003, 2011, 2012, 2013, 2014, 2020, 2040, 2030, 2313] },
+    { key: 'storage', es: 'Almacenamiento', en: 'Storage', ids: [2101, 2102, 2106] },
+    { key: 'production', es: 'Producción', en: 'Production', ids: [2302, 2315, 2319, 2303, 2304, 2305, 2318, 2308, 2309, 2317, 2314, 2310] },
+    { key: 'transportation', es: 'Transporte', en: 'Transportation', ids: [2107, 2103, 2104, 2209] },
+    { key: 'defense', es: 'Defensa', en: 'Defense', ids: [3001, 3002, 3003, 3004, 3010, 3005, 3006, 3007, 3008, 3009] },
+    { key: 'cosmo', es: 'Investigación y esfera Dyson', en: 'Research & Dyson Sphere', ids: [2901, 2902, 2311, 2312, 2208] },
   ];
+
+  for (const g of MENU) Object.defineProperty(g, 'name', { get: () => (isEn() ? g.en : g.es), enumerable: true });
 
   // Otros objetos (para iconos, filtros, etiquetas de cinta)
   const MATERIALS = {
@@ -193,7 +199,7 @@
   const RECIPES = {}, RECIPE_INFO = {};
   for (const [group, list] of Object.entries(R)) {
     for (const [id, name] of Object.entries(list)) {
-      RECIPE_INFO[id] = { id: +id, name: name || `Receta #${id}`, known: !!name, group };
+      RECIPE_INFO[id] = { id: +id, es: name || null, known: !!name, group };
       if (name) RECIPES[id] = name;
     }
   }
@@ -203,11 +209,15 @@
   for (const [id, r] of Object.entries(GEN)) {
     const cur = RECIPE_INFO[id];
     RECIPE_INFO[id] = {
-      id: +id, name: cur && cur.known ? cur.name : r.name, known: true,
+      id: +id, es: cur && cur.known ? cur.es : r.name, known: true,
       group: cur ? cur.group : r.group, en: r.en, product: r.product, icon: r.icon || null,
       products: r.products || (r.product ? [r.product] : []),
     };
-    RECIPES[id] = RECIPE_INFO[id].name;
+  }
+  // nombre en el idioma actual (sin nombre conocido: "Recipe #id")
+  for (const r of Object.values(RECIPE_INFO)) {
+    Object.defineProperty(r, 'name', { get: () => (r.known ? (isEn() ? r.en || r.es : r.es || r.en) : tr('recipe.n', { id: r.id }, `Recipe #${r.id}`)), enumerable: true });
+    if (r.known) Object.defineProperty(RECIPES, r.id, { get: () => r.name, enumerable: true });
   }
   // Recetas de un edificio: primero las de la lista de arriba (orden de uso), luego el resto por número
   function recipesFor(itemId) {
@@ -220,21 +230,27 @@
 
   const BUILDINGS = {};
   for (const [id, v] of Object.entries(B)) {
-    BUILDINGS[id] = {
-      id: +id, name: v[0], cat: v[1], w: v[2], h: v[3], short: v[4],
+    const b = BUILDINGS[id] = {
+      id: +id, es: v[0], cat: v[1], w: v[2], h: v[3], short: v[4],
       en: EN[id] || v[0], icon: EN[id] ? `icons/buildings/${id}.webp` : null,
     };
+    Object.defineProperty(b, 'name', { get: () => (isEn() ? b.en : b.es), enumerable: true });
   }
+  // nombre de un objeto (no edificio) en inglés: el de su icono o el de la receta que lo fabrica
+  const PRODUCT_EN = {};
+  for (const r of Object.values(RECIPE_INFO)) if (r.product && r.en && !PRODUCT_EN[r.product]) PRODUCT_EN[r.product] = r.en;
 
   function itemName(id) {
     if (!id) return '—';
     if (BUILDINGS[id]) return BUILDINGS[id].name;
+    if (isEn() && (ITEM_EN[id] || PRODUCT_EN[id])) return ITEM_EN[id] || PRODUCT_EN[id];
     if (MATERIALS[id]) return MATERIALS[id];
+    if (ITEM_EN[id]) return ITEM_EN[id];
     return '#' + id;
   }
   function recipeName(id) {
-    if (!id) return 'Sin receta';
-    return RECIPES[id] ? `${RECIPES[id]} (#${id})` : `Receta #${id}`;
+    if (!id) return tr('recipe.none', {}, 'No recipe');
+    return RECIPES[id] ? `${RECIPES[id]} (#${id})` : tr('recipe.n', { id }, `Recipe #${id}`);
   }
   function buildingInfo(id) {
     return BUILDINGS[id] || { id, name: '#' + id, cat: 'assembly', w: 2, h: 2, short: String(id) };

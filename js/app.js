@@ -7,6 +7,8 @@
   const RT = window.DSPRates;   // ritmos de producción y potencia (js/rates.js)
   const FL = window.DSPFlow;    // qué productos llegan a cada sitio (js/flow.js)
   const SM = window.DSPSim;     // simulación de flujo en régimen estable (js/sim.js)
+  const I18N = window.DSPI18n;  // idiomas (js/i18n.js)
+  const t = I18N.t;
   const $ = (id) => document.getElementById(id);
 
   // Colores por nivel, iguales para cintas y clasificadores (Mk.I amarillo, Mk.II verde, Mk.III azul)
@@ -92,13 +94,13 @@
 
   function setDirty(d) {
     S.dirty = d;
-    $('docTitle').textContent = (S.dirty ? '● ' : '') + (S.bp ? (S.bp.header.shortDesc || '(sin nombre)') : '') + (S.name ? '  —  ' + S.name : '');
+    $('docTitle').textContent = (S.dirty ? '● ' : '') + (S.bp ? (S.bp.header.shortDesc || t('bp.unnamed')) : '') + (S.name ? '  —  ' + S.name : '');
   }
 
   // ------------------------------------------------------------------ carga / guardado
   async function loadText(text, name, handle) {
     let bp;
-    try { bp = await BP.parse(text); } catch (e) { toast('No se pudo leer el blueprint: ' + e.message, true); return false; }
+    try { bp = await BP.parse(text); } catch (e) { toast(t('load.fail', { e: e.message }), true); return false; }
     delete bp.rawBinary;
     S.bp = bp; S.name = name || ''; S.fileHandle = handle || null; S.hits = null;
     S.sel.clear(); S.undo = []; S.redo = [];
@@ -106,15 +108,15 @@
     setDirty(false);
     fitView();
     refresh();
-    if (!bp.hashOk) toast('Aviso: el hash no coincidía (se recalcula al guardar)', true);
-    else toast(`Abierto: ${bp.header.shortDesc || name} (${bp.buildings.length} edificios)`);
+    if (!bp.hashOk) toast(t('load.hash'), true);
+    else toast(t('load.ok', { name: bp.header.shortDesc || name, n: bp.buildings.length }));
     highlightLibrary();
     return true;
   }
 
   function newBlueprint() {
-    if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return;
-    S.bp = BP.createEmpty('Nuevo blueprint'); S.hits = null;
+    if (S.dirty && !confirm(t('confirm.discard'))) return;
+    S.bp = BP.createEmpty(t('bp.newName')); S.hits = null;
     S.name = ''; S.fileHandle = null; S.sel.clear(); S.undo = []; S.redo = [];
     S.view = { cx: 10, cy: 5, scale: 24 };
     setDirty(false); refresh(); highlightLibrary();
@@ -132,7 +134,7 @@
     const s = await exportString();
     try {
       await navigator.clipboard.writeText(s);
-      toast(`Código copiado (${s.length} caracteres). Pégalo en el juego.`);
+      toast(t('copy.ok', { n: s.length }));
     } catch (e) {
       $('codeText').value = s; $('dlgCode').showModal(); $('codeText').select();
     }
@@ -160,9 +162,9 @@
     if (S.fileHandle && S.fileHandle.createWritable) {
       try {
         await writeHandle(S.fileHandle, await exportString());
-        setDirty(false); toast('Guardado en ' + S.name);
+        setDirty(false); toast(t('save.ok', { name: S.name }));
         return;
-      } catch (e) { toast('No se pudo guardar: ' + e.message, true); return; }
+      } catch (e) { toast(t('save.fail', { e: e.message }), true); return; }
     }
     return saveAs();
   }
@@ -171,30 +173,30 @@
     if (!S.bp) return;
     const text = await exportString();
     if (S.dirHandle) {
-      let name = prompt('Nombre del archivo (se guardará en la carpeta abierta):', safeName(S.bp.header.shortDesc));
+      let name = prompt(t('save.prompt'), safeName(S.bp.header.shortDesc));
       if (!name) return;
       name = safeName(name).replace(/\.txt$/i, '') + '.txt';
       try {
         let exists = true;
         try { await S.dirHandle.getFileHandle(name); } catch (e) { exists = false; }
-        if (exists && !confirm(`"${name}" ya existe. ¿Sobrescribir?`)) return;
+        if (exists && !confirm(t('save.exists', { name }))) return;
         const h = await S.dirHandle.getFileHandle(name, { create: true });
         await writeHandle(h, text);
         S.fileHandle = h; S.name = name; setDirty(false);
-        toast('Guardado como ' + name);
+        toast(t('save.as', { name }));
         await scanDir();
-      } catch (e) { toast('No se pudo guardar: ' + e.message, true); }
+      } catch (e) { toast(t('save.fail', { e: e.message }), true); }
       return;
     }
     if (window.showSaveFilePicker) {
       try {
         const h = await window.showSaveFilePicker({
           suggestedName: safeName(S.bp.header.shortDesc) + '.txt',
-          types: [{ description: 'Blueprint DSP', accept: { 'text/plain': ['.txt'] } }],
+          types: [{ description: t('file.type'), accept: { 'text/plain': ['.txt'] } }],
         });
         await writeHandle(h, text);
-        S.fileHandle = h; S.name = h.name; setDirty(false); toast('Guardado como ' + h.name);
-      } catch (e) { if (e.name !== 'AbortError') toast('No se pudo guardar: ' + e.message, true); }
+        S.fileHandle = h; S.name = h.name; setDirty(false); toast(t('save.as', { name: h.name }));
+      } catch (e) { if (e.name !== 'AbortError') toast(t('save.fail', { e: e.message }), true); }
       return;
     }
     download();
@@ -205,9 +207,9 @@
   async function openFile() {
     if (window.showOpenFilePicker) {
       try {
-        const [h] = await window.showOpenFilePicker({ types: [{ description: 'Blueprint DSP', accept: { 'text/plain': ['.txt'] } }] });
+        const [h] = await window.showOpenFilePicker({ types: [{ description: t('file.type'), accept: { 'text/plain': ['.txt'] } }] });
         const f = await h.getFile();
-        if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return;
+        if (S.dirty && !confirm(t('confirm.discard'))) return;
         await loadText(await f.text(), f.name, h);
         return;
       } catch (e) {
@@ -260,7 +262,7 @@
 
   function renderLibrary() {
     const el = $('library');
-    if (!S.library.length) { el.innerHTML = '<p class="muted small">No hay archivos .txt en la carpeta.</p>'; return; }
+    if (!S.library.length) { el.innerHTML = `<p class="muted small">${esc(t('lib.empty'))}</p>`; return; }
     let html = '', lastDir = null;
     for (let i = 0; i < S.library.length; i++) {
       const p = S.library[i].path;
@@ -279,7 +281,7 @@
   }
   $('library').addEventListener('click', async (ev) => {
     const d = ev.target.closest('.lib-item'); if (!d) return;
-    if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return;
+    if (S.dirty && !confirm(t('confirm.discard'))) return;
     const e = S.library[+d.dataset.i];
     const text = e.file ? await e.file.text() : await (await e.handle.getFile()).text();
     await loadText(text, e.path, e.handle || null);
@@ -304,11 +306,11 @@
         const active = S.placeItem === b.id && S.tool !== 'select' && S.tool !== 'paste';
         const icon = b.icon ? `<img class="pal-icon" src="${b.icon}" alt="">` : `<span class="pal-swatch" style="background:${BELT_COLORS[b.id] || (IT.CATS[b.cat] || {}).color}"></span>`;
         html += `<div class="pal-item${ok ? '' : ' disabled'}${active ? ' active' : ''}" data-id="${b.id}"
-          title="${esc(b.name)} (${b.id})${ok ? '' : ' · modelo desconocido: abre algún blueprint que lo contenga'}">
-          ${icon}<span class="pal-name">${esc(b.en)}</span></div>`;
+          title="${esc(b.name)}${I18N.lang === 'en' ? '' : ' / ' + esc(b.en)} (${b.id})${ok ? '' : ' · ' + esc(t('pal.unknown'))}">
+          ${icon}<span class="pal-name">${esc(b.name)}</span></div>`;
       }
     }
-    $('palette').innerHTML = html || '<p class="muted small">Sin resultados</p>';
+    $('palette').innerHTML = html || `<p class="muted small">${esc(t('pal.none'))}</p>`;
   }
 
   $('paletteSearch').addEventListener('input', renderPalette);
@@ -330,11 +332,11 @@
     S.tool = tool; S.placeItem = item || null; S.drag = null;
     document.querySelectorAll('#toolbar .tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === tool));
     const hints = {
-      select: 'Clic: seleccionar · Ctrl: añadir · Mayús+clic: copiar el edificio (arrastra para ponerlo en fila) · Arrastrar: mover/selección por caja · Doble clic en cinta: toda la línea · Botón derecho/central: desplazar',
-      place: `Colocando ${IT.itemName(item)} · R: girar${item === 2020 ? ` · Tab: variante (${(SPLIT[S.splitModel] || {}).name})` : ''} · Esc: terminar`,
-      belt: `Cinta ${IT.itemName(item)} a nivel ${curLevel()} · Arrastra para trazar · +/- cambia la altura (también a mitad de trazado: sube o baja en esa casilla) · R: el codo empieza por el otro lado · Acaba en una flecha para entrar en un divisor, estación… · Esc: terminar`,
-      paste: 'Pegando · R: girar · Clic: colocar, arrastrar: varias en fila (las que chocan se saltan) · Mayús: seguir pegando · Esc: cancelar',
-      sorter: `${IT.itemName(item)} · Arrastra desde el origen (cinta o hueco) hasta el destino · Los puntos son los huecos · Esc: terminar`,
+      select: t('hint.select'),
+      place: t('hint.place', { name: IT.itemName(item), variant: item === 2020 ? t('hint.place.variant', { name: (SPLIT[S.splitModel] || {}).name }) : '' }),
+      belt: t('hint.belt', { name: IT.itemName(item), level: curLevel() }),
+      paste: t('hint.paste'),
+      sorter: t('hint.sorter', { name: IT.itemName(item) }),
     };
     $('toolHint').textContent = hints[tool] || '';
     $('canvas').style.cursor = tool === 'select' ? 'default' : 'crosshair';
@@ -887,7 +889,7 @@
     drawGrid();
     if (!S.bp) {
       ctx.fillStyle = '#8892a6'; ctx.font = '16px Segoe UI'; ctx.textAlign = 'center';
-      ctx.fillText('Abre un blueprint, pega un código o crea uno nuevo', W / 2, H / 2);
+      ctx.fillText(t('canvas.empty'), W / 2, H / 2);
       return;
     }
     const bs = S.bp.buildings;
@@ -1135,7 +1137,7 @@
     removeBuildings(rm);
     S.sel.clear();
     refresh();
-    toast(rm.size > 1 ? `${rm.size} cintas borradas` : `${IT.itemName(h.itemId)} borrado`);
+    toast(rm.size > 1 ? t('del.belts', { n: rm.size }) : t('del.one', { name: IT.itemName(h.itemId) }));
   }
   function selectBeltLine(b) { beltLine(b).forEach((x) => S.sel.add(x)); }
   // Cintas conectadas a b (hacia delante y hacia atrás); sameType: solo las del mismo tipo (Mk.I/II/III)
@@ -1184,7 +1186,7 @@
     S.bp.buildings.push(b);
     S.sel.clear(); S.sel.add(b);
     refresh();
-    if (stacked && S.bp.buildings.includes(b)) toast(`Apilado sobre ${IT.itemName(S.bp.buildings[b.inputObjIdx].itemId)} (altura ${b.z})`);
+    if (stacked && S.bp.buildings.includes(b)) toast(t('stack.on', { name: IT.itemName(S.bp.buildings[b.inputObjIdx].itemId), z: I18N.num(b.z) }));
   }
 
   // Camino en L entre dos celdas
@@ -1247,10 +1249,10 @@
     for (let i = 1; i < cells.length; i++) {
       if (!portCell(cells[i], L)) continue;
       endPort = portAt(cells[i], [cells[i][0] - cells[i - 1][0], cells[i][1] - cells[i - 1][1]], true, L);
-      if (!endPort) { toast('Ese puerto no admite entrada por ese lado o a ese nivel', true); return; }
+      if (!endPort) { toast(t('belt.noIn'), true); return; }
       cells = cells.slice(0, i + 1); break;
     }
-    if (cells.length > 1 && !startPort && portCell(cells[0], L)) { toast('Ese puerto no tiene salida por ese lado o a ese nivel', true); return; }
+    if (cells.length > 1 && !startPort && portCell(cells[0], L)) { toast(t('belt.noOut'), true); return; }
     const created = [];
     const add = (x, y, yaw) => {
       const nb = makeBuilding(itemId, x, y, yaw);
@@ -1289,7 +1291,7 @@
         // subida/bajada al empezar sobre el final de una cinta de otro nivel
         const nb = add(x, y, yawAt(i));
         other.outputObjIdx = bs.indexOf(nb); other.outputToSlot = 1;
-        prev = nb; msg = levelOf(other) < L ? ' (con subida)' : ' (con bajada)';
+        prev = nb; msg = levelOf(other) < L ? t('belt.up') : t('belt.down');
         continue;
       }
       const nb = add(x, y, yawAt(i));
@@ -1298,7 +1300,7 @@
       if (i === last && !endPort && other && !hasInput(other)) {
         // terminar sobre el principio de una cinta de otro nivel
         prev.outputObjIdx = bs.indexOf(other); prev.outputToSlot = 1;
-        msg = levelOf(other) > L ? ' (con subida)' : ' (con bajada)';
+        msg = levelOf(other) > L ? t('belt.up') : t('belt.down');
         prev = null;
       }
     }
@@ -1323,7 +1325,7 @@
     if (outSt) PR.write(outSt.b, { ports: Object.assign([], { [outSt.slot]: { dir: 1 } }) });
     S.sel = new Set(created);
     refresh();
-    toast(`${created.length} cintas añadidas a nivel ${L}${msg}`);
+    toast(t('belt.added', { n: created.length, level: L, extra: msg }));
     if (outSt) openPortChooser(outSt.b, outSt.slot);
   }
 
@@ -1332,9 +1334,9 @@
   function portChoices(st, k) {
     const p = PR.read(st), cur = p.ports[k] ? p.ports[k].storage : 0;
     const tile = (v, inner, title) => `<button type="button" class="otile${v === cur ? ' on' : ''}" data-act="portOut" data-st="${S.bp.buildings.indexOf(st)}" data-k="${k}" data-v="${v}" title="${esc(title)}">${inner}</button>`;
-    return `<div class="otiles">${tile(0, '<span class="onone">Nada</span>', 'No sale nada')}${p.slots.map((sl, i) => tile(i + 1,
+    return `<div class="otiles">${tile(0, `<span class="onone">${esc(t('port.nothing'))}</span>`, t('port.nothing.tip'))}${p.slots.map((sl, i) => tile(i + 1,
       sl.item ? `${itemIcon(sl.item, 30)}<sup>#${i + 1}</sup>` : `<span class="onum">#${i + 1}</span>`,
-      sl.item ? `#${i + 1} ${IT.itemName(sl.item)}` : `#${i + 1} (vacío)`)).join('')}</div>`;
+      sl.item ? `#${i + 1} ${IT.itemName(sl.item)}` : t('port.empty', { n: i + 1 }))).join('')}</div>`;
   }
   function setPortOut(st, k, v) {
     pushUndo(); PR.write(st, { ports: Object.assign([], { [k]: { dir: 1, storage: v } }) }); refresh();
@@ -1360,7 +1362,7 @@
     chooserKey = keyVal || ((n) => n);
   }
   function openPortChooser(st, k) {
-    openChooser('¿Qué sale por esta cinta?', portChoices(st, k), `${esc(IT.itemName(st.itemId))} · puerto ${k} · Esc: nada`,
+    openChooser(t('port.ask'), portChoices(st, k), esc(t('port.sub', { name: IT.itemName(st.itemId), k })),
       (v) => PR.write(st, { ports: Object.assign([], { [k]: { dir: 1, storage: v } }) }));
   }
   document.addEventListener('mousedown', (ev) => { const p = $('portPop'); if (p && !p.contains(ev.target)) closePortChooser(); });
@@ -1459,7 +1461,7 @@
     ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
     if (snapped && !g.ok) {
       ctx.fillStyle = '#e05555'; ctx.font = '12px Segoe UI'; ctx.textAlign = 'left';
-      ctx.fillText(`longitud ${g.len.toFixed(1)} (máx. 3)`, bx + 10, by);
+      ctx.fillText(t('canvas.sorterLen', { len: I18N.num(Math.round(g.len * 10) / 10) }), bx + 10, by);
     }
   }
 
@@ -1503,7 +1505,7 @@
     a = resolveSlot(a, c.pos);
     c = resolveSlot(c, a.pos);
     const g = sorterGeometry(a, c);
-    if (!g.ok) { toast(`No se puede: longitud ${g.len.toFixed(1)} casillas (un clasificador mide de 1 a 3)`, true); return; }
+    if (!g.ok) { toast(t('sorter.badLen', { len: I18N.num(Math.round(g.len * 10) / 10) }), true); return; }
     const bs = S.bp.buildings;
     const ia = a.kind === 'belt' ? nearestBelt(g.P, a.b) : a.b;
     const ic = c.kind === 'belt' ? nearestBelt(g.Q, c.b) : c.b;
@@ -1530,9 +1532,9 @@
   }
   function openFilterChooser(sorter, from, products) {
     const tile = (v, inner, title) => `<button type="button" class="otile" data-v="${v}" title="${esc(title)}">${inner}</button>`;
-    const tiles = `<div class="otiles">${tile(0, '<span class="onone">Todo</span>', 'Sin filtro: coge todos los productos')}${products.map((p, i) =>
+    const tiles = `<div class="otiles">${tile(0, `<span class="onone">${esc(t('sorter.all'))}</span>`, t('sorter.all.tip'))}${products.map((p, i) =>
       tile(p, `${itemIcon(p, 30)}<sup>#${i + 1}</sup>`, `#${i + 1} ${IT.itemName(p)}`)).join('')}</div>`;
-    openChooser('¿Qué producto coge el clasificador?', tiles, `${esc(IT.itemName(from.itemId))} · ${esc(IT.RECIPE_INFO[from.recipeId].name)} · Esc: todo`,
+    openChooser(t('sorter.ask'), tiles, esc(t('sorter.sub', { name: IT.itemName(from.itemId), recipe: IT.RECIPE_INFO[from.recipeId].name })),
       (v, t) => { sorter.filterId = v; }, (i) => (i === 0 ? 0 : products[i - 1]));
   }
 
@@ -1593,13 +1595,13 @@
     if (merged === false) {
       // no encajan: se deshace el movimiento
       S.bp = JSON.parse(S.undo.pop()); S.sel.clear();
-      toast('No se puede soltar ahí: la cinta no encaja con la de debajo (sentido contrario)', true);
+      toast(t('move.badBelt'), true);
       return;
     }
     const joined = joinBeltEnds(new Set([...moved].filter((b) => S.bp.buildings.includes(b))));
-    if (merged) toast(merged > 1 ? `${merged} cintas sustituidas` : 'Cinta sustituida');
-    else if (joined) toast(joined > 1 ? `${joined} conexiones de cinta rehechas` : 'Conexión de cinta rehecha');
-    else if (cut) toast(cut > 1 ? `${cut} conexiones de cinta cortadas al mover` : '1 conexión de cinta cortada al mover');
+    if (merged) toast(t('move.merged', { n: merged }));
+    else if (joined) toast(t('move.joined', { n: joined }));
+    else if (cut) toast(t('move.cut', { n: cut }));
   }
 
   // Engancha extremos libres que se miran: una cinta sin salida cuya casilla de delante tiene otra cinta del
@@ -1662,12 +1664,12 @@
     if (!S.bp) return;
     const bs = S.bp.buildings;
     const loose = new Set(bs.filter((b) => isSorter(b) && (!bs[b.inputObjIdx] || !bs[b.outputObjIdx])));
-    if (!loose.size) { toast('No hay clasificadores sueltos'); return; }
+    if (!loose.size) { toast(t('clean.none')); return; }
     pushUndo();
     removeBuildings(loose);
     S.sel.clear();
     refresh();
-    toast(`${loose.size} clasificadores sueltos borrados`);
+    toast(t('clean.done', { n: loose.size }));
   }
 
   function deleteSelection() {
@@ -1677,7 +1679,7 @@
     removeBuildings(S.sel);
     S.sel.clear();
     refresh();
-    toast(`${n} edificios borrados`);
+    toast(t('del.n', { n }));
   }
 
   function removeBuildings(rm) {
@@ -1723,7 +1725,7 @@
     S.clip = { items };
     try { localStorage.setItem('dspbp.clip', JSON.stringify(S.clip)); } catch (e) { /* ignorar */ }
     if (cut) deleteSelection();
-    else toast(`${items.length} edificios copiados`);
+    else toast(t('copy.n', { n: items.length }));
   }
 
   function clipPlaced(gx, gy) {
@@ -1780,11 +1782,11 @@
       if (COL.find(clipPlaced(x, y), S.bp.buildings).length) { skipped++; continue; }
       placed.push(...addClip(x, y));
     }
-    if (!placed.length) { S.undo.pop(); if (pos.length > 1 || skipped) toast('No cabe: chocaría', true); return; }
+    if (!placed.length) { S.undo.pop(); if (pos.length > 1 || skipped) toast(t('paste.noRoom'), true); return; }
     S.sel = new Set(placed);
     learnTemplates(S.bp);
     refresh();
-    if (pos.length > 1) toast(`${pos.length - skipped} copias${skipped ? ` (${skipped} saltadas por choque)` : ''}`);
+    if (pos.length > 1) toast(t('paste.n', { n: pos.length - skipped, skipped }));
   }
 
   function placeClip(gx, gy) {
@@ -1829,7 +1831,7 @@
     if (S.tool === 'belt') { S.drag = { type: 'belt', start: [gx, gy] }; requestDraw(); return; }
     if (S.tool === 'sorter') {
       const a = findAnchor(S.mouse.wx, S.mouse.wy);
-      if (!a) { toast('Empieza en una cinta o en un hueco de un edificio (los puntos)', true); return; }
+      if (!a) { toast(t('sorter.start'), true); return; }
       S.drag = { type: 'sorter', start: a }; requestDraw(); return;
     }
     if (S.tool === 'paste') {
@@ -1949,7 +1951,7 @@
     if (k === 'r' && S.tool === 'belt') {
       // en diagonal: alterna entre empezar en horizontal o en vertical
       S.beltFlip = !S.beltFlip; requestDraw();
-      toast(`El codo empieza ${S.beltFlip ? 'al revés' : 'por el lado largo'}`); return;
+      toast(t(S.beltFlip ? 'belt.bendFlip' : 'belt.bendLong')); return;
     }
     if (k === 'r') { rotateSelection(); return; }
     // +/- (como en el juego) o RePág/AvPág: altura de la cinta
@@ -1966,16 +1968,16 @@
         createBeltLine(beltPath(d.start, here));
         setLevel(l);
         S.drag = { type: 'belt', start: here };
-        toast(`${up ? 'Subida' : 'Bajada'} a nivel ${l}: sigue arrastrando`);
+        toast(t('level.change', { up, level: l }));
         requestDraw(); return;
       }
-      setLevel(l); toast(`Nivel ${S.level}`); return;
+      setLevel(l); toast(t('level.now', { level: S.level })); return;
     }
     // E: elegir receta de lo seleccionado
     if (k === 'e') {
       const btn = $('recipeBtn');
       if (btn) { ev.preventDefault(); if (!$('recipePop')) openRecipePicker(btn); }
-      else toast('Selecciona un edificio de producción para elegir su receta', true);
+      else toast(t('recipe.needSel'), true);
       return;
     }
     if (k === 'tab') {
@@ -1984,12 +1986,12 @@
       const sel = [...S.sel].filter((b) => b.itemId === 2020);
       if (S.tool === 'place' && S.placeItem === 2020) {
         S.splitModel = models[(models.indexOf(S.splitModel) + 1) % models.length];
-        toast(`Divisor: ${SPLIT[S.splitModel].name}`); setTool('place', 2020);
+        toast(t('split.now', { name: SPLIT[S.splitModel].name })); setTool('place', 2020);
       } else if (sel.length) {
         pushUndo();
         const m = models[(models.indexOf(sel[0].modelIndex) + 1) % models.length];
         sel.forEach((b) => { b.modelIndex = m; });
-        toast(`Divisor: ${SPLIT[m].name}`); refresh();
+        toast(t('split.now', { name: SPLIT[m].name })); refresh();
       }
       return;
     }
@@ -2010,9 +2012,9 @@
 
   // ------------------------------------------------------------------ inspector
   // Comprobación de suministro: se recalcula en cada cambio (unos milisegundos)
-  // Se recalculan solo si cambia el blueprint (S.edits cuenta los cambios) o la opción de la simulación
+  // Se recalculan solo si cambia el blueprint (S.edits cuenta los cambios), la opción de la simulación o el idioma
   function updateFlow() {
-    const k = S.bp ? [S.edits || 0, S.bp.buildings.length, S.openEnds].join(':') : '';
+    const k = S.bp ? [S.edits || 0, S.bp.buildings.length, S.openEnds, I18N.lang].join(':') : '';   // los avisos llevan texto
     if (S.bp && S.flowBp === S.bp && S.flowKey === k) return;
     S.flowBp = S.bp; S.flowKey = k;
     S.flow = S.bp ? FL.analyze(S.bp.buildings) : null;
@@ -2031,8 +2033,7 @@
   function updateStatus() {
     if (!S.bp) { $('stInfo').textContent = ''; return; }
     const n = S.hits ? S.hits.length : 0;
-    $('stInfo').textContent = `${S.bp.buildings.length} edificios · ${S.sel.size} seleccionados · zoom ${S.view.scale.toFixed(1)}` +
-      (n ? ` · ⚠ ${n} choque${n > 1 ? 's' : ''}` : '');
+    $('stInfo').textContent = t('status', { n: S.bp.buildings.length, sel: S.sel.size, zoom: I18N.num(Math.round(S.view.scale * 10) / 10), hits: n });
   }
 
   // Recalcula los choques; avisa si la última acción ha creado alguno nuevo
@@ -2046,7 +2047,7 @@
       S.bp = JSON.parse(S.undo.pop());
       S.sel.clear();
       S.hits = COL.find(S.bp.buildings);
-      toast(`No se puede: ${IT.itemName(a.itemId)} chocaría con ${IT.itemName(b.itemId)}`, true);
+      toast(t('collide', { a: IT.itemName(a.itemId), b: IT.itemName(b.itemId) }), true);
     }
   }
 
@@ -2054,7 +2055,7 @@
 
   function renderInspector() {
     const el = $('inspector');
-    if (!S.bp) { el.innerHTML = '<p class="muted">Sin blueprint abierto.</p>'; return; }
+    if (!S.bp) { el.innerHTML = `<p class="muted">${esc(t('insp.none'))}</p>`; return; }
     if (S.sel.size === 0) el.innerHTML = inspectorBlueprint();
     else if (S.sel.size === 1) el.innerHTML = inspectorSingle([...S.sel][0]);
     else el.innerHTML = inspectorMulti();
@@ -2073,45 +2074,48 @@
     const date = BP.ticksToDate(h.time);
     const icons = h.icons.map((v, i) => `<input type="number" data-icon="${i}" value="${v}" title="${esc(IT.itemName(v))}">`).join('');
     const iconNames = h.icons.filter((v) => v).map((v) => esc(IT.itemName(v))).join(', ') || '—';
-    return `<h3>Blueprint</h3>
-      ${field('Nombre', `<input id="hName" value="${esc(h.shortDesc)}">`)}
-      ${field('Descripción', `<textarea id="hDesc" rows="3">${esc(h.desc)}</textarea>`)}
-      <div class="field"><label>Iconos</label><div class="icons-row">${icons}</div></div>
+    return `<h3>${t('bp.title')}</h3>
+      ${field(t('bp.name'), `<input id="hName" value="${esc(h.shortDesc)}">`)}
+      ${field(t('bp.desc'), `<textarea id="hDesc" rows="3">${esc(h.desc)}</textarea>`)}
+      <div class="field"><label>${t('bp.icons')}</label><div class="icons-row">${icons}</div></div>
       <p class="muted small" style="margin:0 0 4px 101px">${iconNames}</p>
-      ${field('Disposición', `<input type="number" id="hLayout" value="${h.layout}" title="Decenas = nº de iconos (10, 21, 50…)">`)}
-      ${field('Versión juego', `<span class="muted">${esc(h.gameVersion)}</span>`)}
-      ${field('Fecha', `<span class="muted">${date ? date.toLocaleString() : '—'}</span>`)}
-      ${field('Hash', S.bp.hashOk ? '<span class="badge ok">válido</span>' : '<span class="badge bad">no coincidía</span>')}
-      ${field('Tamaño', `<span class="muted">${S.bp.areas[0] ? S.bp.areas[0].size.x + ' × ' + S.bp.areas[0].size.y : '—'} (${S.bp.areas.length} área${S.bp.areas.length > 1 ? 's' : ''})</span>`)}
+      ${field(t('bp.layout'), `<input type="number" id="hLayout" value="${h.layout}" title="${esc(t('bp.layout.tip'))}">`)}
+      ${field(t('bp.version'), `<span class="muted">${esc(h.gameVersion)}</span>`)}
+      ${field(t('bp.date'), `<span class="muted">${date ? date.toLocaleString(I18N.lang) : '—'}</span>`)}
+      ${field(t('bp.hash'), S.bp.hashOk ? `<span class="badge ok">${t('bp.hashOk')}</span>` : `<span class="badge bad">${t('bp.hashBad')}</span>`)}
+      ${field(t('bp.size'), `<span class="muted">${S.bp.areas[0] ? S.bp.areas[0].size.x + ' × ' + S.bp.areas[0].size.y : '—'} (${t('bp.areas', { n: S.bp.areas.length })})</span>`)}
       ${checksHTML()}
       ${simHTML()}
-      ${totalsHTML(S.bp.buildings, 'teórico (todas al 100 %)')}
+      ${totalsHTML(S.bp.buildings, t('bp.totals'))}
       <hr class="sep">
-      <h3>Edificios (${S.bp.buildings.length})</h3>
-      <p class="muted small">Clic en un tipo para seleccionarlos todos.</p>
+      <h3>${t('bp.buildings', { n: S.bp.buildings.length })}</h3>
+      <p class="muted small">${t('bp.clickType')}</p>
       ${countTable(S.bp.buildings, 'selitem')}`;
   }
 
   function connLabel(idx) {
-    if (idx < 0) return '<span class="muted">ninguna</span>';
-    const t = S.bp.buildings[idx];
-    if (!t) return `#${idx} <span class="muted">(no existe)</span>`;
-    return `<span class="link" data-goto="${idx}">#${idx} ${esc(IT.itemName(t.itemId))}</span>`;
+    if (idx < 0) return `<span class="muted">${t('conn.none')}</span>`;
+    const b = S.bp.buildings[idx];
+    if (!b) return `#${idx} <span class="muted">${t('conn.missing')}</span>`;
+    return `<span class="link" data-goto="${idx}">#${idx} ${esc(IT.itemName(b.itemId))}</span>`;
   }
 
   // ------------------------------------------------------------------ inspector por tipo de edificio
   const BELT_TIERS = [[2001, 'Mk.I'], [2002, 'Mk.II'], [2003, 'Mk.III']];
-  const SORTER_TIERS = [[2011, 'Mk.I'], [2012, 'Mk.II'], [2013, 'Mk.III'], [2014, 'Apilador']];
+  const SORTER_TIERS = [[2011, 'Mk.I'], [2012, 'Mk.II'], [2013, 'Mk.III'], [2014, () => t('tier.pile')]];
 
   function inspHead(b, sub) {
     const info = IT.buildingInfo(b.itemId);
     const icon = info.icon ? `<img class="insp-icon" src="${info.icon}" alt="">` : '';
-    return `<div class="insp-head">${icon}<div><div class="insp-name">${esc(info.en || info.name)}</div>
-      <div class="muted small">${esc(info.name)}${sub ? ' · ' + sub : ''}</div></div></div>`;
+    // en español, el nombre del juego en inglés arriba (el de la wiki) y el español debajo
+    const top = I18N.lang === 'en' ? info.name : info.en || info.name;
+    const second = [I18N.lang === 'en' ? '' : esc(info.name), sub].filter(Boolean).join(' · ');
+    return `<div class="insp-head">${icon}<div><div class="insp-name">${esc(top)}</div>
+      <div class="muted small">${second}</div></div></div>`;
   }
   function chips(tiers, isOn, act) {
     return `<div class="chips">${tiers.map(([id, label]) => `<button type="button" class="chip${isOn(id) ? ' on' : ''}" data-act="${act}" data-id="${id}"
-      style="--c:${BELT_COLORS[id] || '#8892a6'}"${S.templates[id] ? '' : ' disabled title="Sin modelo conocido"'}>${label}</button>`).join('')}</div>`;
+      style="--c:${BELT_COLORS[id] || '#8892a6'}"${S.templates[id] ? '' : ` disabled title="${esc(t('tier.noModel'))}"`}>${typeof label === 'function' ? label() : label}</button>`).join('')}</div>`;
   }
   function itemButton(act, id, empty) {
     const name = id ? IT.itemName(id) : empty;
@@ -2119,31 +2123,31 @@
   }
   // "Cinta #12" / "Ensamblador Mk.I #3, hueco 7"
   function endLabel(idx, slot) {
-    const t = S.bp.buildings[idx];
-    if (!t) return '<span class="bad-text">suelto</span>';
-    const sl = !isBelt(t) && slot >= 0 ? `, hueco ${slot}` : '';
-    return `<span class="link" data-goto="${idx}">${esc(IT.buildingInfo(t.itemId).en || IT.itemName(t.itemId))} #${idx}</span>${sl}`;
+    const b = S.bp.buildings[idx];
+    if (!b) return `<span class="bad-text">${t('end.loose')}</span>`;
+    const sl = !isBelt(b) && slot >= 0 ? t('end.slot', { slot }) : '';
+    return `<span class="link" data-goto="${idx}">${esc(IT.buildingInfo(b.itemId).name || IT.itemName(b.itemId))} #${idx}</span>${sl}`;
   }
   function advanced(b) {
     const slots = [b.outputToSlot, b.inputFromSlot, b.outputFromSlot, b.inputToSlot, b.outputOffset, b.inputOffset].join(', ');
     const big = b.parameters.length > 64;
-    let html = `<details class="adv"><summary>Avanzado (datos del blueprint)</summary>
-      ${field('Modelo', `<input type="number" data-f="modelIndex" value="${b.modelIndex}">`)}
-      <div class="field"><label>Posición</label><div class="xyz">
+    let html = `<details class="adv"><summary>${t('adv.title')}</summary>
+      ${field(t('adv.model'), `<input type="number" data-f="modelIndex" value="${b.modelIndex}">`)}
+      <div class="field"><label>${t('adv.pos')}</label><div class="xyz">
         <input type="number" step="0.5" data-f="x" value="${r2(b.x)}" title="x">
         <input type="number" step="0.5" data-f="y" value="${r2(b.y)}" title="y">
-        <input type="number" step="0.5" data-f="z" value="${r2(b.z)}" title="altura"></div></div>`;
+        <input type="number" step="0.5" data-f="z" value="${r2(b.z)}" title="${esc(t('adv.height'))}"></div></div>`;
     if (isSorter(b)) {
-      html += `<div class="field"><label>Posición final</label><div class="xyz">
+      html += `<div class="field"><label>${t('adv.pos2')}</label><div class="xyz">
         <input type="number" step="0.1" data-f="x2" value="${r2(b.x2)}"><input type="number" step="0.1" data-f="y2" value="${r2(b.y2)}">
         <input type="number" step="0.1" data-f="z2" value="${r2(b.z2)}"></div></div>`;
     }
-    html += `${field('Orientación', `<input type="number" step="90" data-f="yaw" value="${r2(b.yaw)}" title="grados (0 = norte, 90 = este)">`)}
-      ${field('Salida →', connLabel(b.outputObjIdx))}
-      ${field('Entrada ←', connLabel(b.inputObjIdx))}
-      ${field('Huecos', `<input id="slots" value="${slots}" title="salidaA, entradaDe, salidaDe, entradaA, despl. salida, despl. entrada">`)}
-      ${field(`Parámetros (${b.parameters.length})`, `<textarea id="params" rows="${big ? 6 : 2}">${b.parameters.join(', ')}</textarea>`)}
-      <div class="row end"><button id="btnApplyParams">Aplicar parámetros</button></div>
+    html += `${field(t('adv.yaw'), `<input type="number" step="90" data-f="yaw" value="${r2(b.yaw)}" title="${esc(t('adv.yaw.tip'))}">`)}
+      ${field(t('adv.out'), connLabel(b.outputObjIdx))}
+      ${field(t('adv.in'), connLabel(b.inputObjIdx))}
+      ${field(t('adv.slots'), `<input id="slots" value="${slots}" title="${esc(t('adv.slots.tip'))}">`)}
+      ${field(t('adv.params', { n: b.parameters.length }), `<textarea id="params" rows="${big ? 6 : 2}">${b.parameters.join(', ')}</textarea>`)}
+      <div class="row end"><button id="btnApplyParams">${t('adv.apply')}</button></div>
     </details>`;
     return html;
   }
@@ -2154,61 +2158,62 @@
     let html = '';
     if (isBelt(b)) {
       const line = beltLine(b, true);
-      html += inspHead(b, `#${idx} · nivel ${levelOf(b)}`);
-      html += `<h4>Tipo</h4>${chips(BELT_TIERS, (id) => id === b.itemId, 'tier')}
-        <p class="muted small">Esta cinta. <span class="link" data-act="lineSel">Seleccionar la línea (${line.size})</span> para cambiarla entera.</p>
-        <h4>Icono en la cinta</h4>${itemButton('pickLabel', b.parameters[0] || 0, 'Sin icono')}
+      html += inspHead(b, t('belt.sub', { i: idx, level: levelOf(b) }));
+      html += `<h4>${t('h.type')}</h4>${chips(BELT_TIERS, (id) => id === b.itemId, 'tier')}
+        <p class="muted small">${t('belt.this')} <span class="link" data-act="lineSel">${t('belt.selLine', { n: line.size })}</span> ${t('belt.toChange')}</p>
+        <h4>${t('belt.label')}</h4>${itemButton('pickLabel', b.parameters[0] || 0, t('belt.noLabel'))}
         ${carriesHTML(idx)}${simBeltHTML(b, idx)}
-        <h4>Recorrido</h4>
-        ${field('Viene de', bs.some((x) => isBelt(x) && bs[x.outputObjIdx] === b) ? 'otra cinta' : (b.inputObjIdx >= 0 ? endLabel(b.inputObjIdx, b.inputFromSlot) : '<span class="muted">inicio</span>'))}
-        ${field('Va a', b.outputObjIdx >= 0 ? endLabel(b.outputObjIdx, b.outputToSlot) : '<span class="muted">final</span>')}`;
+        <h4>${t('belt.route')}</h4>
+        ${field(t('belt.from'), bs.some((x) => isBelt(x) && bs[x.outputObjIdx] === b) ? t('belt.otherBelt') : (b.inputObjIdx >= 0 ? endLabel(b.inputObjIdx, b.inputFromSlot) : `<span class="muted">${t('belt.start')}</span>`))}
+        ${field(t('belt.to'), b.outputObjIdx >= 0 ? endLabel(b.outputObjIdx, b.outputToSlot) : `<span class="muted">${t('belt.end')}</span>`)}`;
       // Cinta que sale de una estación: qué producto saca
       const st = bs[b.inputObjIdx];
       if (st && PR.STATION_SLOTS[st.itemId] && b.inputFromSlot >= 0 && b.inputFromSlot < 12) {
-        html += `<h4>Producto que sale de la estación</h4>${portChoices(st, b.inputFromSlot)}`;
+        html += `<h4>${t('belt.stationOut')}</h4>${portChoices(st, b.inputFromSlot)}`;
       }
     } else if (isSorter(b)) {
       const len = b.parameters[0] || 1;
       html += inspHead(b, `#${idx}`);
-      html += `<h4>Tipo</h4>${chips(SORTER_TIERS, (id) => id === b.itemId, 'tier')}
-        <h4>Filtro</h4>${itemButton('pickFilter', b.filterId, 'Sin filtro (todo)')}
-        <h4>Conexión</h4>
-        ${field('Desde', endLabel(b.inputObjIdx, b.inputFromSlot))}
-        ${field('Hasta', endLabel(b.outputObjIdx, b.outputToSlot))}
-        ${field('Longitud', `${len} casilla${len > 1 ? 's' : ''}`)}
-        ${field('Capacidad', `<b>${fmtRate(RT.sorter(b))}/min</b> <span class="muted small">(${String(RT.SORTER_SPEED[b.itemId] || 0).replace('.', ',')} viajes/s por casilla ÷ ${len})</span>`)}
+      html += `<h4>${t('h.type')}</h4>${chips(SORTER_TIERS, (id) => id === b.itemId, 'tier')}
+        <h4>${t('sorter.filter')}</h4>${itemButton('pickFilter', b.filterId, t('sorter.noFilter'))}
+        <h4>${t('sorter.conn')}</h4>
+        ${field(t('sorter.from'), endLabel(b.inputObjIdx, b.inputFromSlot))}
+        ${field(t('sorter.to'), endLabel(b.outputObjIdx, b.outputToSlot))}
+        ${field(t('sorter.len'), t('sorter.cells', { n: len }))}
+        ${field(t('sorter.cap'), `<b>${fmtRate(RT.sorter(b))}/min</b> <span class="muted small">(${t('sorter.capNote', { speed: I18N.num(RT.SORTER_SPEED[b.itemId] || 0), len })})</span>`)}
         ${simSorterHTML(b, idx)}
-        ${(() => { const mv = S.flow && S.flow.moves.get(idx); return mv && mv.size ? field('Puede llevar', [...mv].map((id) => `<span class="carry" title="${esc(IT.itemName(id))}">${itemIcon(id, 20)}<span>${esc(IT.itemName(id))}</span></span>`).join(' ')) : ''; })()}`;
+        ${(() => { const mv = S.flow && S.flow.moves.get(idx); return mv && mv.size ? field(t('sorter.carry'), [...mv].map((id) => `<span class="carry" title="${esc(IT.itemName(id))}">${itemIcon(id, 20)}<span>${esc(IT.itemName(id))}</span></span>`).join(' ')) : ''; })()}`;
     } else {
       const g = IT.RECIPE_GROUP[b.itemId];
       const below = b.inputObjIdx >= 0 && bs[b.inputObjIdx] && !isBelt(bs[b.inputObjIdx]) && !isSorter(bs[b.inputObjIdx]) &&
         Math.abs(bs[b.inputObjIdx].x - b.x) < 0.3 && Math.abs(bs[b.inputObjIdx].y - b.y) < 0.3 ? bs[b.inputObjIdx] : null;
-      html += inspHead(b, `#${idx}${b.z > 0.5 ? ` · altura ${r2(b.z)}` : ''}`);
+      html += inspHead(b, `#${idx}${b.z > 0.5 ? ' · ' + t('b.height', { z: I18N.num(r2(b.z)) }) : ''}`);
       html += issuesOf(idx);
-      if (g || b.recipeId) html += `<h4>Receta <span class="muted small">(E)</span></h4><div class="wide">${recipeButton(b.recipeId)}</div>${rateHTML(b)}${simMachineHTML(idx)}`;
+      if (g || b.recipeId) html += `<h4>${t('h.recipe')} <span class="muted small">(E)</span></h4><div class="wide">${recipeButton(b.recipeId)}</div>${rateHTML(b)}${simMachineHTML(idx)}`;
       html += powerHTML(b);
       if (b.itemId === 2020 && SPLIT[b.modelIndex]) {
-        html += `<h4>Variante <span class="muted small">(Tab)</span></h4><div class="chips col">${Object.entries(SPLIT).map(([m, v]) =>
+        html += `<h4>${t('h.variant')} <span class="muted small">(Tab)</span></h4><div class="chips col">${Object.entries(SPLIT).map(([m, v]) =>
           `<button type="button" class="chip${+m === b.modelIndex ? ' on' : ''}" data-act="split" data-id="${m}">${esc(v.short)} ${esc(v.name)}</button>`).join('')}</div>`;
       }
       html += propsHTML(b);
-      if (below) html += `<p class="muted small">Apilado sobre ${endLabel(bs.indexOf(below), -1)}.</p>`;
+      if (below) html += `<p class="muted small">${t('b.stackedOn', { what: endLabel(bs.indexOf(below), -1) })}</p>`;
       const att = attachedSorters(new Set([b]));
       const ports = beltPorts(b);
       if (att.size || slotsOf(b).length || ports.length) {
-        html += `<h4>Conexiones</h4>`;
-        if (slotsOf(b).length) html += field('Clasificadores', att.size ? `<span class="link" data-act="selSorters">${att.size} enganchados</span> de ${slotsOf(b).length} huecos` : `0 de ${slotsOf(b).length} huecos`);
+        html += `<h4>${t('h.conn')}</h4>`;
+        const ofSlots = t('b.ofSlots', { slots: slotsOf(b).length });
+        if (slotsOf(b).length) html += field(t('b.sorters'), att.size ? `<span class="link" data-act="selSorters">${t('b.sortersOn', { n: att.size })}</span>${ofSlots}` : `0${ofSlots}`);
         if (ports.length) {
           const used = ports.filter((p) => bs.some((x) => isBelt(x) && ((x.outputObjIdx === idx && x.outputToSlot === p.slot) || (x.inputObjIdx === idx && x.inputFromSlot === p.slot))));
-          html += field('Puertos de cinta', `${used.length} de ${ports.length} en uso`);
+          html += field(t('b.beltPorts'), t('b.portsUsed', { used: used.length, n: ports.length }));
         }
       }
     }
     html += `<div class="row wrap">
-        <button id="btnRotSel" title="R">⟳ Girar</button>
-        <button data-act="copyWith" title="Mayús+clic en el edificio">⧉ Copiar</button>
-        <button id="btnSelSame">Seleccionar iguales</button>
-        <button class="danger" id="btnDelOne" title="Supr / X+clic">Borrar</button></div>`;
+        <button id="btnRotSel" title="R">${t('btn.rotate')}</button>
+        <button data-act="copyWith" title="${esc(t('btn.copy.tip'))}">${t('btn.copy')}</button>
+        <button id="btnSelSame">${t('btn.selSame')}</button>
+        <button class="danger" id="btnDelOne" title="${esc(t('btn.delete.tip'))}">${t('btn.delete')}</button></div>`;
     html += advanced(b);
     return html;
   }
@@ -2221,52 +2226,52 @@
     for (const b of list) counts.set(b.itemId, (counts.get(b.itemId) || 0) + 1);
     const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([id, n]) => {
       const info = IT.buildingInfo(id);
-      return `<div class="type-row" data-keepitem="${id}">${info.icon ? `<img src="${info.icon}" alt="">` : '<span></span>'}<span class="link" data-keepitem="${id}">${esc(info.en || info.name)}</span><span class="num">${n}</span></div>`;
+      return `<div class="type-row" data-keepitem="${id}">${info.icon ? `<img src="${info.icon}" alt="">` : '<span></span>'}<span class="link" data-keepitem="${id}">${esc(info.name)}</span><span class="num">${n}</span></div>`;
     }).join('');
-    let html = `<h3>${list.length} seleccionados</h3><p class="muted small">Clic en un tipo para quedarte solo con ese.</p>${rows}`;
+    let html = `<h3>${t('multi.title', { n: list.length })}</h3><p class="muted small">${t('multi.clickType')}</p>${rows}`;
     if (prodList.length) {
       const recipes = new Set(prodList.map((b) => b.recipeId));
-      html += `<h4>Receta (${prodList.length}) <span class="muted small">(E)</span></h4><div class="wide">${recipeButton(recipes.size === 1 ? [...recipes][0] : null)}</div>`;
+      html += `<h4>${t('multi.recipe', { n: prodList.length })} <span class="muted small">(E)</span></h4><div class="wide">${recipeButton(recipes.size === 1 ? [...recipes][0] : null)}</div>`;
     }
     if (belts.length) {
       const tiers = new Set(belts.map((b) => b.itemId));
-      html += `<h4>Cintas (${belts.length})</h4>${chips(BELT_TIERS, (id) => tiers.size === 1 && tiers.has(id), 'tier')}`;
+      html += `<h4>${t('multi.belts', { n: belts.length })}</h4>${chips(BELT_TIERS, (id) => tiers.size === 1 && tiers.has(id), 'tier')}`;
     }
     if (sorters.length) {
       const tiers = new Set(sorters.map((b) => b.itemId)), filters = new Set(sorters.map((b) => b.filterId));
-      html += `<h4>Clasificadores (${sorters.length})</h4>${chips(SORTER_TIERS, (id) => tiers.size === 1 && tiers.has(id), 'tier')}
-        ${itemButton('pickFilter', filters.size === 1 ? [...filters][0] : 0, filters.size === 1 ? 'Sin filtro (todo)' : 'Filtros distintos')}`;
+      html += `<h4>${t('multi.sorters', { n: sorters.length })}</h4>${chips(SORTER_TIERS, (id) => tiers.size === 1 && tiers.has(id), 'tier')}
+        ${itemButton('pickFilter', filters.size === 1 ? [...filters][0] : 0, filters.size === 1 ? t('sorter.noFilter') : t('sorter.mixed'))}`;
     }
     const same = new Set(list.map((b) => b.itemId));
     if (same.size === 1 && PR.read(list[0])) html += propsHTML(list[0], true);
-    html += totalsHTML(list, 'de la selección');
-    html += `<div class="row wrap"><button id="btnRotSel">⟳ Girar</button><button id="btnCopySel">⧉ Copiar</button><button class="danger" id="btnDelSel">Borrar</button></div>`;
+    html += totalsHTML(list, t('multi.totals'));
+    html += `<div class="row wrap"><button id="btnRotSel">${t('btn.rotate')}</button><button id="btnCopySel">${t('btn.copy')}</button><button class="danger" id="btnDelSel">${t('btn.delete')}</button></div>`;
     return html;
   }
 
   // ------------------------------------------------------------------ recetas, ritmos y potencia (js/rates.js)
-  const fmtRate = (v) => (v >= 100 ? Math.round(v) : v >= 10 ? Math.round(v * 10) / 10 : Math.round(v * 100) / 100).toLocaleString('es');
-  const fmtTime = (v) => `${Math.round(v * 1000) / 1000} s`.replace('.', ',');
-  const fmtPower = (kw) => (Math.abs(kw) >= 1000 ? `${(Math.round(kw / 10) / 100).toLocaleString('es')} MW` : `${(Math.round(kw * 10) / 10).toLocaleString('es')} kW`);
+  const fmtRate = (v) => I18N.num(v >= 100 ? Math.round(v) : v >= 10 ? Math.round(v * 10) / 10 : Math.round(v * 100) / 100);
+  const fmtTime = (v) => `${I18N.num(Math.round(v * 1000) / 1000)} s`;
+  const fmtPower = (kw) => (Math.abs(kw) >= 1000 ? `${I18N.num(Math.round(kw / 10) / 100)} MW` : `${I18N.num(Math.round(kw * 10) / 10)} kW`);
   const gotOf = (b) => (S.flow && S.flow.supplied.get(S.bp.buildings.indexOf(b))) || new Set();
   const ioRow = (id, n, perMin, ok) => `<div class="io">${ok === undefined ? '' : `<span class="${ok ? 'okmark' : 'badmark'}">${ok ? '✓' : '✗'}</span>`}<span class="ioi">${itemIcon(id, 22)}</span><span class="ion">${esc(IT.itemName(id))}</span>${n !== null ? `<span class="muted">×${n}</span>` : ''}<span class="ior">${fmtRate(perMin)}/min</span></div>`;
   // Receta de una máquina: tiempo con su multiplicador, entradas y salidas por ciclo y por minuto
   function rateHTML(b) {
     const m = RT.machine(b);
-    if (!m) return b.itemId === 2314 && b.recipeId ? '<p class="muted small">El fraccionador convierte el 1 % de lo que pasa por la cinta: su ritmo depende de la cinta.</p>' : '';
+    if (!m) return b.itemId === 2314 && b.recipeId ? `<p class="muted small">${t('rate.fract')}</p>` : '';
     const r = IT.RECIPE_INFO[b.recipeId] || {}, src = window.DSPRecipes[b.recipeId];
-    const sp = m.speed !== 1 ? `${fmtTime(m.base)} × 1/${String(m.speed).replace('.', ',')} = <b>${fmtTime(m.cycle)}</b>` : `<b>${fmtTime(m.cycle)}</b>`;
+    const sp = m.speed !== 1 ? `${fmtTime(m.base)} × 1/${I18N.num(m.speed)} = <b>${fmtTime(m.cycle)}</b>` : `<b>${fmtTime(m.cycle)}</b>`;
     return `<div class="recipe-io">
-      ${field('Ciclo', `${sp} <span class="muted small">(velocidad x${String(m.speed).replace('.', ',')})</span>`)}
-      <div class="muted small">Entradas <span class="small">(✓ le llega · ✗ no le llega)</span></div>${src.in.map(([id, n], i) => ioRow(id, n, m.in[i][1], gotOf(b).has(id))).join('')}
-      <div class="muted small">Salidas</div>${src.out.map(([id, n], i) => ioRow(id, n, m.out[i][1])).join('')}
+      ${field(t('rate.cycle'), `${sp} <span class="muted small">(${t('rate.speed', { speed: I18N.num(m.speed) })})</span>`)}
+      <div class="muted small">${t('rate.inputs')} <span class="small">${t('rate.inputsNote')}</span></div>${src.in.map(([id, n], i) => ioRow(id, n, m.in[i][1], gotOf(b).has(id))).join('')}
+      <div class="muted small">${t('rate.outputs')}</div>${src.out.map(([id, n], i) => ioRow(id, n, m.out[i][1])).join('')}
     </div>`;
   }
   function powerHTML(b) {
     const p = RT.power(b);
     if (!p) return '';
-    if (p.work < 0) return `<h4>Energía</h4>${field('Genera', fmtPower(-p.work))}`;
-    return `<h4>Consumo</h4>${field('Trabajando', fmtPower(p.work))}${field('En reposo', fmtPower(p.idle))}`;
+    if (p.work < 0) return `<h4>${t('power.title')}</h4>${field(t('power.gen'), fmtPower(-p.work))}`;
+    return `<h4>${t('power.use')}</h4>${field(t('power.work'), fmtPower(p.work))}${field(t('power.idle'), fmtPower(p.idle))}`;
   }
   // Comprobación de suministro (js/flow.js)
   const LEVEL = { error: '✗', warn: '!' };
@@ -2282,48 +2287,47 @@
     if (!S.flow) return '';
     const l = S.flow.issues, err = l.filter((x) => x.level === 'error'), warn = l.filter((x) => x.level === 'warn');
     const MAX = 40, rows = [...err, ...warn].slice(0, MAX).map(issueRow).join('');
-    return `<hr class="sep"><h3>Comprobación</h3>
-      <p class="muted small">Llega lo que pide cada receta por cintas con etiqueta, salidas de estaciones, almacenes, salidas de otras máquinas o monitores que generan.</p>
-      ${l.length ? `<p class="small"><span class="bad-text">${err.length} errores</span> · <span class="warn-text">${warn.length} avisos</span>${l.length > MAX ? ` (se muestran ${MAX})` : ''}</p>${rows}` : '<p class="ok-text small">✓ A todas las máquinas les llega lo que necesitan y no hay mezclas.</p>'}`;
+    return `<hr class="sep"><h3>${t('checks.title')}</h3>
+      <p class="muted small">${t('checks.note')}</p>
+      ${l.length ? `<p class="small">${t('checks.count', { err: err.length, warn: warn.length, max: l.length > MAX ? MAX : 0 })}</p>${rows}` : `<p class="ok-text small">${t('checks.ok')}</p>`}`;
   }
   function carriesHTML(i) {
     const s = S.flow && S.flow.items.get(i);
-    const list = s && s.size ? [...s].map((id) => `<span class="carry" title="${esc(IT.itemName(id))}">${itemIcon(id, 22)}<span>${esc(IT.itemName(id))}</span></span>`).join('') : '<span class="muted small">Nada (sin etiqueta ni origen conocido)</span>';
-    return `<h4>Lleva</h4><div class="carries">${list}</div>${issuesOf(i)}`;
+    const list = s && s.size ? [...s].map((id) => `<span class="carry" title="${esc(IT.itemName(id))}">${itemIcon(id, 22)}<span>${esc(IT.itemName(id))}</span></span>`).join('') : `<span class="muted small">${t('carries.none')}</span>`;
+    return `<h4>${t('carries.title')}</h4><div class="carries">${list}</div>${issuesOf(i)}`;
   }
 
   // ------------------------------------------------------------------ simulación (js/sim.js)
-  const LIMIT = { input: 'le falta', sorter: 'sus clasificadores no dan abasto con', output: 'no le sacan' };
   const pctOf = (r) => `${Math.floor(r * 100 + 1e-6)} %`;
   const itemList = (o) => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([id, v]) => `<div class="io"><span class="ioi">${itemIcon(+id, 20)}</span><span class="ion">${esc(IT.itemName(+id))}</span><span class="ior">${fmtRate(v)}/min</span></div>`).join('');
   function reasonOf(m) {
-    if (m.r > 0.995) return 'a toda velocidad';
+    if (m.r > 0.995) return t('sim.full');
     const l = m.limit || {};
-    return l.kind && l.kind !== 'none' ? `${LIMIT[l.kind]} ${IT.itemName(l.item)}` : 'frenada';
+    return l.kind && l.kind !== 'none' ? t('sim.limit.' + l.kind, { item: IT.itemName(l.item) }) : t('sim.slowed');
   }
   function simMachineHTML(i) {
     const m = S.sim && S.sim.machines.get(i);
     if (!m) return '';
-    const row = (x, a, b) => `<div class="io"><span class="ioi">${itemIcon(+x, 20)}</span><span class="ion">${esc(IT.itemName(+x))}</span><span class="muted">${fmtRate(a)} de</span><span class="ior">${fmtRate(b)}/min</span></div>`;
+    const row = (x, a, b) => `<div class="io"><span class="ioi">${itemIcon(+x, 20)}</span><span class="ion">${esc(IT.itemName(+x))}</span><span class="muted">${fmtRate(a)} ${t('sim.of')}</span><span class="ior">${fmtRate(b)}/min</span></div>`;
     const rows = Object.keys(m.need).map((x) => row(x, m.got[x] || 0, m.need[x])).join('');
     const outs = Object.keys(m.prod).map((x) => row(x, m.prod[x] * m.r, m.prod[x])).join('');
     const cls = m.r > 0.995 ? 'full' : m.r < 0.01 ? 'zero' : '';
-    return `<h4>Simulación</h4>
+    return `<h4>${t('sim.title')}</h4>
       <div class="simbar"><span style="width:${Math.round(m.r * 100)}%" class="${cls}"></span><b>${pctOf(m.r)}</b></div>
       <p class="small ${m.r > 0.995 ? 'ok-text' : 'warn-text'}">${esc(reasonOf(m))}</p>
-      <div class="muted small">Recibe</div>${rows}<div class="muted small">Fabrica</div>${outs}`;
+      <div class="muted small">${t('sim.receives')}</div>${rows}<div class="muted small">${t('sim.makes')}</div>${outs}`;
   }
   function simBeltHTML(b, i) {
     const f = S.sim && S.sim.belts.get(i);
     if (!f) return '';
     const tot = Object.values(f).reduce((a, v) => a + v, 0), cap = SM.BELT_CAP[b.itemId];
-    return `<h4>Simulación</h4>${field('Pasa', `<b>${fmtRate(tot)}/min</b> <span class="muted small">de ${fmtRate(cap)} (${pctOf(tot / cap)})</span>`)}${itemList(f)}`;
+    return `<h4>${t('sim.title')}</h4>${field(t('sim.passes'), `<b>${fmtRate(tot)}/min</b> <span class="muted small">${t('sim.ofCap', { cap: fmtRate(cap), pct: pctOf(tot / cap) })}</span>`)}${itemList(f)}`;
   }
   function simSorterHTML(b, i) {
     const f = S.sim && S.sim.sorters.get(i);
     if (!f) return '';
     const tot = Object.values(f).reduce((a, v) => a + v, 0), cap = RT.sorter(b);
-    return `${field('Mueve', `<b>${fmtRate(tot)}/min</b> <span class="muted small">de ${fmtRate(cap)} (${pctOf(tot / cap)})</span>`)}${itemList(f)}`;
+    return `${field(t('sim.moves'), `<b>${fmtRate(tot)}/min</b> <span class="muted small">${t('sim.ofCap', { cap: fmtRate(cap), pct: pctOf(tot / cap) })}</span>`)}${itemList(f)}`;
   }
   function simHTML() {
     if (!S.sim) return '';
@@ -2333,42 +2337,42 @@
     const slow = ms.filter(([, m]) => m.r <= 0.995).sort((a, b) => a[1].r - b[1].r);
     const full = ms.length - slow.length;
     const rows = slow.slice(0, 40).map(([i, m]) => `<div class="issue ${m.r < 0.01 ? 'error' : 'warn'}"><span class="lv">${Math.floor(m.r * 100)}%</span><span><span class="link" data-goto="${i}">${esc(IT.buildingInfo(bs[i].itemId).name)} #${i}</span>: ${esc(reasonOf(m))}</span></div>`).join('');
-    const jams = sm.jams.slice(0, 10).map((j) => `<div class="issue warn"><span class="lv">!</span><span><span class="link" data-goto="${j.i}">Cinta #${j.i}</span>: se atasca, sobran ${fmtRate(j.rate)}/min de ${esc(IT.itemName(j.item))} que nadie recoge</span></div>`).join('');
-    const none = (t) => `<p class="muted small">${t}</p>`;
-    return `<hr class="sep"><h3>Simulación</h3>
-      <p class="muted small">Flujo estable: cintas Mk.I 360, Mk.II 720 y Mk.III 1800/min; clasificadores según su longitud; estaciones, cintas con etiqueta y monitores que generan como entrada; monitores que consumen y entradas de estación como salida.</p>
-      <label class="pcheck"><input type="checkbox" id="openEnds"${S.openEnds ? ' checked' : ''}> Las cintas sin salida retiran lo que llega (para probar sin consumidores)</label>
-      ${ms.length ? `<p class="small"><span class="ok-text">${full} de ${ms.length} máquinas al 100 %</span>${slow.length ? ` · <span class="warn-text">${slow.length} por debajo</span>` : ''}</p>${rows}` : ''}
+    const jams = sm.jams.slice(0, 10).map((j) => `<div class="issue warn"><span class="lv">!</span><span><span class="link" data-goto="${j.i}">${t('sim.jam', { i: j.i })}</span>: ${esc(t('sim.jamMsg', { rate: fmtRate(j.rate), item: IT.itemName(j.item) }))}</span></div>`).join('');
+    const none = (txt) => `<p class="muted small">${txt}</p>`;
+    return `<hr class="sep"><h3>${t('sim.title')}</h3>
+      <p class="muted small">${t('sim.note')}</p>
+      <label class="pcheck"><input type="checkbox" id="openEnds"${S.openEnds ? ' checked' : ''}> ${t('sim.openEnds')}</label>
+      ${ms.length ? `<p class="small"><span class="ok-text">${t('sim.machines', { full, n: ms.length })}</span>${slow.length ? ` · <span class="warn-text">${t('sim.below', { n: slow.length })}</span>` : ''}</p>${rows}` : ''}
       ${jams}
-      ${Object.keys(inn).length ? `<div class="muted small">Entra al blueprint</div>${itemList(inn)}` : none('No entra nada: pon una cinta con etiqueta, una estación o un monitor que genere.')}
-      ${Object.keys(out).length ? `<div class="muted small">Sale del blueprint</div>${itemList(out)}` : none('No sale nada: sin consumidores (monitor que consume, estación) las cintas se llenan y la fábrica se para.')}
-      ${sm.converged ? '' : `<p class="warn-text small">La simulación no se ha estabilizado del todo (${sm.iterations} vueltas).</p>`}`;
+      ${Object.keys(inn).length ? `<div class="muted small">${t('sim.in')}</div>${itemList(inn)}` : none(t('sim.noIn'))}
+      ${Object.keys(out).length ? `<div class="muted small">${t('sim.out')}</div>${itemList(out)}` : none(t('sim.noOut'))}
+      ${sm.converged ? '' : `<p class="warn-text small">${t('sim.notConverged', { n: sm.iterations })}</p>`}`;
   }
 
   // Balance de un grupo de edificios: lo que se produce y consume por minuto y la potencia
   function totalsHTML(list, what) {
-    const t = RT.totals(list);
-    if (!t.machines && !t.work && !t.gen) return '';
-    const rows = t.items.map(([id, i, o]) => {
+    const tt = RT.totals(list);
+    if (!tt.machines && !tt.work && !tt.gen) return '';
+    const rows = tt.items.map(([id, i, o]) => {
       const net = o - i, cls = Math.abs(net) < 1e-6 ? 'muted' : net > 0 ? 'pos' : 'neg';
       return `<tr><td>${itemIcon(id, 18)}</td><td>${esc(IT.itemName(id))}</td><td class="num muted">${i ? fmtRate(i) : ''}</td><td class="num muted">${o ? fmtRate(o) : ''}</td><td class="num ${cls}">${net > 0 ? '+' : ''}${fmtRate(net)}</td></tr>`;
     }).join('');
-    return `<hr class="sep"><h3>Balance ${what}</h3>
-      <p class="muted small">Por minuto, con las máquinas trabajando sin parar y sin proliferador.</p>
-      ${t.items.length ? `<table class="rates"><tr class="muted small"><td></td><td>${t.machines} máquinas</td><td class="num">entra</td><td class="num">sale</td><td class="num">neto</td></tr>${rows}</table>` : ''}
-      ${field('Consumo', `${fmtPower(t.work)} <span class="muted small">trabajando · ${fmtPower(t.idle)} en reposo</span>`)}
-      ${t.gen ? field('Genera', fmtPower(t.gen)) : ''}
-      ${t.notes.length ? `<p class="muted small">${esc(t.notes.join(' · '))}.</p>` : ''}`;
+    return `<hr class="sep"><h3>${t('totals.title', { what })}</h3>
+      <p class="muted small">${t('totals.note')}</p>
+      ${tt.items.length ? `<table class="rates"><tr class="muted small"><td></td><td>${t('totals.machines', { n: tt.machines })}</td><td class="num">${t('totals.in')}</td><td class="num">${t('totals.out')}</td><td class="num">${t('totals.net')}</td></tr>${rows}</table>` : ''}
+      ${field(t('power.use'), t('totals.power', { work: fmtPower(tt.work), idle: fmtPower(tt.idle) }))}
+      ${tt.gen ? field(t('power.gen'), fmtPower(tt.gen)) : ''}
+      ${tt.notes.length ? `<p class="muted small">${esc(tt.notes.join(' · '))}.</p>` : ''}`;
   }
 
   // ------------------------------------------------------------------ propiedades (js/props.js)
   // Los controles llevan data-p con la ruta del campo ("chargeMW", "slots.2.local", "priority.1"…).
   // Se aplica a todos los seleccionados del mismo tipo que el primero.
-  const LOGIC = [[0, 'Almacén'], [1, 'Ofrecer'], [2, 'Pedir']];
-  const SIDE_ES = { N: 'norte', E: 'este', S: 'sur', W: 'oeste' };
+  const LOGIC = () => [[0, t('logic.storage')], [1, t('logic.supply')], [2, t('logic.demand')]];
+  const SIDE_NAME = (k) => t('side.' + k);
   // Icarus en el distribuidor: el 2 («dar y recoger») está comprobado en el juego; 1 y 3 son deducidos.
-  const ICARUS = [[2, 'Dar y recoger'], [1, 'Solo dar'], [3, 'Solo recoger'], [0, 'No']];
-  const DISTR = [[0, 'No'], [1, 'Ofrecer'], [2, 'Pedir']];
+  const ICARUS = () => [[2, t('icarus.both')], [1, t('icarus.give')], [3, t('icarus.take')], [0, t('no')]];
+  const DISTR = () => [[0, t('no')], [1, t('logic.supply')], [2, t('logic.demand')]];
 
   function pathObj(path, v) {
     const keys = path.split('.'), root = {};
@@ -2418,79 +2422,79 @@
     const id = b.itemId;
     let h = '';
     if (id === 2208) {
-      h += `<h4>Modo</h4>${pChips('mode', [['power', 'Generar energía'], ['photon', 'Generar fotones']], p.mode)}
-        <p class="muted small">${p.mode === 'photon' ? 'Fabrica fotones críticos (sale por los puertos de cinta).' : 'Envía la energía de la esfera de Dyson a la red.'}</p>`;
+      h += `<h4>${t('ray.mode')}</h4>${pChips('mode', [['power', t('ray.power')], ['photon', t('ray.photon')]], p.mode)}
+        <p class="muted small">${p.mode === 'photon' ? t('ray.photonNote') : t('ray.powerNote')}</p>`;
     } else if (id === 2107) {
-      h += `<h4>Producto</h4>${pItem('item', p.item, 'Sin producto')}
-        <h4>Distribución</h4>
-        ${field('Con Icarus', pSelect('icarus', ICARUS, p.icarus))}
-        ${field('Con otros distribuidores', pChips('distributors', DISTR, p.distributors))}
-        ${field('Carga máx. (MW)', pNum('chargeMW', p.chargeMW, 'step="0.3" min="0.3"'))}
-        ${pCheck('autoBots', p.autoBots, 'Reponer drones de distribución automáticamente')}`;
+      h += `<h4>${t('p.product')}</h4>${pItem('item', p.item, t('p.noProduct'))}
+        <h4>${t('dist.title')}</h4>
+        ${field(t('dist.icarus'), pSelect('icarus', ICARUS(), p.icarus))}
+        ${field(t('dist.others'), pChips('distributors', DISTR(), p.distributors))}
+        ${field(t('p.chargeMW'), pNum('chargeMW', p.chargeMW, 'step="0.3" min="0.3"'))}
+        ${pCheck('autoBots', p.autoBots, t('dist.autoBots'))}`;
     } else if (PR.DEPOT_SLOTS[id]) {
       const anyF = p.filters.some(Boolean);
-      h += `<h4>Capacidad</h4>${field('Casillas usables', `<div class="row">${pNum('usable', p.usable, `min="0" max="${p.slots}" style="width:70px"`)}<span class="muted small">de ${p.slots}</span></div>`)}
-        <h4>Filtros <span class="muted small">(clic en una casilla)</span></h4>
+      h += `<h4>${t('depot.cap')}</h4>${field(t('depot.usable'), `<div class="row">${pNum('usable', p.usable, `min="0" max="${p.slots}" style="width:70px"`)}<span class="muted small">${t('depot.of', { n: p.slots })}</span></div>`)}
+        <h4>${t('depot.filters')} <span class="muted small">${t('depot.filtersNote')}</span></h4>
         <div class="wide"><div class="fgrid">${p.filters.map((f, i) =>
-          `<button type="button" class="ftile pick-btn${i >= p.usable ? ' banned' : ''}" data-act="pickProp" data-p="filters.${i}" data-cur="${f}" data-empty="Sin filtro" title="Casilla ${i + 1}: ${esc(f ? IT.itemName(f) : 'sin filtro')}">${f ? itemIcon(f, 20) : ''}</button>`).join('')}</div></div>
-        <div class="row wrap"><div class="wide grow">${pItem('filtersAll', 0, 'Filtrar todas con…')}</div>${anyF ? '<button type="button" data-act="setProp" data-p="filtersAll" data-v="0">Quitar filtros</button>' : ''}</div>`;
+          `<button type="button" class="ftile pick-btn${i >= p.usable ? ' banned' : ''}" data-act="pickProp" data-p="filters.${i}" data-cur="${f}" data-empty="${esc(t('depot.noFilter'))}" title="${esc(t('depot.slot', { n: i + 1, what: f ? IT.itemName(f) : t('depot.noFilter') }))}">${f ? itemIcon(f, 20) : ''}</button>`).join('')}</div></div>
+        <div class="row wrap"><div class="wide grow">${pItem('filtersAll', 0, t('depot.filterAll'))}</div>${anyF ? `<button type="button" data-act="setProp" data-p="filtersAll" data-v="0">${t('depot.clear')}</button>` : ''}</div>`;
     } else if (PR.STATION_SLOTS[id]) {
-      h += `<h4>Productos</h4>`;
+      h += `<h4>${t('st.products')}</h4>`;
       p.slots.forEach((s, i) => {
-        h += `<div class="slotrow"><div class="wide">${pItem(`slots.${i}.item`, s.item, 'Vacío')}</div>${s.item ? `<div class="slotcfg">
-          <label>${p.interstellar ? 'Local' : 'Modo'} ${pSelect(`slots.${i}.local`, LOGIC, s.local)}</label>
-          ${p.interstellar ? `<label>Remoto ${pSelect(`slots.${i}.remote`, LOGIC, s.remote)}</label>` : ''}
-          <label>Límite ${pNum(`slots.${i}.max`, s.max, 'min="0" step="100"')}</label></div>` : ''}</div>`;
+        h += `<div class="slotrow"><div class="wide">${pItem(`slots.${i}.item`, s.item, t('st.empty'))}</div>${s.item ? `<div class="slotcfg">
+          <label>${p.interstellar ? t('st.local') : t('st.mode')} ${pSelect(`slots.${i}.local`, LOGIC(), s.local)}</label>
+          ${p.interstellar ? `<label>${t('st.remote')} ${pSelect(`slots.${i}.remote`, LOGIC(), s.remote)}</label>` : ''}
+          <label>${t('st.max')} ${pNum(`slots.${i}.max`, s.max, 'min="0" step="100"')}</label></div>` : ''}</div>`;
       });
       if (!multi) {
         const pb = portBelts(b), used = Object.keys(pb).map(Number).filter((k) => k < 12).sort((x, y) => x - y);
-        const side = (slot) => { const pt = (BELT_PORTS[id] || []).find((q) => q[0] === slot); return pt ? SIDE_ES[pt[3]] : ''; };
+        const side = (slot) => { const pt = (BELT_PORTS[id] || []).find((q) => q[0] === slot); return pt ? SIDE_NAME(pt[3]) : ''; };
         if (used.length) {
-          h += `<h4>Puertos de cinta</h4>${used.map((k) => {
-            const c = pb[k], label = `Puerto ${k} <span class="muted small">${side(k)}</span>`;
-            if (c.dir === 'in') return field(label, `<span class="muted">Entrada · <span class="link" data-goto="${c.belt}">cinta #${c.belt}</span></span>`);
-            return `<div class="portrow"><div class="row"><span>${label}</span><span class="link small" data-goto="${c.belt}">cinta #${c.belt}</span></div>${portChoices(b, k)}</div>`;
-          }).join('')}<p class="muted small">En las salidas se elige qué producto sale a la cinta.</p>`;
+          h += `<h4>${t('st.ports')}</h4>${used.map((k) => {
+            const c = pb[k], label = `${t('st.port', { k })} <span class="muted small">${side(k)}</span>`;
+            if (c.dir === 'in') return field(label, `<span class="muted">${t('st.in')} · <span class="link" data-goto="${c.belt}">${t('st.belt', { i: c.belt })}</span></span>`);
+            return `<div class="portrow"><div class="row"><span>${label}</span><span class="link small" data-goto="${c.belt}">${t('st.belt', { i: c.belt })}</span></div>${portChoices(b, k)}</div>`;
+          }).join('')}<p class="muted small">${t('st.portsNote')}</p>`;
         }
       }
-      h += `<h4>Ajustes de la estación</h4>
-        ${field('Carga máx. (MW)', pNum('chargeMW', p.chargeMW, 'step="1" min="0"'))}
-        ${field('Alcance drones (°)', pNum('droneRange', p.droneRange, 'min="20" max="180" step="1"'))}
-        ${field('Carga mín. drones (%)', pNum('droneMinLoad', p.droneMinLoad, 'min="1" max="100"'))}`;
+      h += `<h4>${t('st.settings')}</h4>
+        ${field(t('p.chargeMW'), pNum('chargeMW', p.chargeMW, 'step="1" min="0"'))}
+        ${field(t('st.droneRange'), pNum('droneRange', p.droneRange, 'min="20" max="180" step="1"'))}
+        ${field(t('st.droneMin'), pNum('droneMinLoad', p.droneMinLoad, 'min="1" max="100"'))}`;
       if (p.interstellar) {
-        h += `${field('Alcance naves (AL)', `<div class="row">${pNum('vesselRangeLY', p.vesselRangeLY, 'min="1" step="1" style="width:70px"')}<span class="muted small">${p.vesselRangeLY >= 100 ? '∞' : '100 = ∞'}</span></div>`)}
-        ${field('Carga mín. naves (%)', pNum('vesselMinLoad', p.vesselMinLoad, 'min="1" max="100"'))}
-        ${field('Distancia curvatura (UA)', pNum('warpAU', p.warpAU, 'min="0.5" step="0.5"'))}
-        ${pCheck('warpersRequired', p.warpersRequired, 'Exigir curvadores')}
-        ${pCheck('orbitalCollector', p.orbitalCollector, 'Colector orbital')}`;
+        h += `${field(t('st.vesselRange'), `<div class="row">${pNum('vesselRangeLY', p.vesselRangeLY, 'min="1" step="1" style="width:70px"')}<span class="muted small">${p.vesselRangeLY >= 100 ? '∞' : '100 = ∞'}</span></div>`)}
+        ${field(t('st.vesselMin'), pNum('vesselMinLoad', p.vesselMinLoad, 'min="1" max="100"'))}
+        ${field(t('st.warp'), pNum('warpAU', p.warpAU, 'min="0.5" step="0.5"'))}
+        ${pCheck('warpersRequired', p.warpersRequired, t('st.warpers'))}
+        ${pCheck('orbitalCollector', p.orbitalCollector, t('st.collector'))}`;
       }
-      h += `${field('Apilado de salida', `<div class="row">${pNum('outgoingCount', p.outgoingCount, 'min="0" max="4" style="width:60px"')}<span class="muted small">0 = límite de tecnología</span></div>`)}
-        ${pCheck('autoDrones', p.autoDrones, 'Reponer drones automáticamente')}
-        ${p.interstellar ? pCheck('autoVessels', p.autoVessels, 'Reponer naves automáticamente') : ''}`;
+      h += `${field(t('st.stack'), `<div class="row">${pNum('outgoingCount', p.outgoingCount, 'min="0" max="4" style="width:60px"')}<span class="muted small">${t('st.stackNote')}</span></div>`)}
+        ${pCheck('autoDrones', p.autoDrones, t('st.autoDrones'))}
+        ${p.interstellar ? pCheck('autoVessels', p.autoVessels, t('st.autoVessels')) : ''}`;
     } else if (id === 2030) {
       const belt = monitorBelt(b);
-      h += `<h4>Sandbox</h4>${pChips('mode', [['none', 'Solo medir'], ['generate', 'Generar'], ['consume', 'Consumir']], p.mode)}
-        ${field('Producto', pItem('item', p.item, p.mode === 'consume' ? 'Todo' : 'Ninguno'))}
-        <p class="muted small">${p.mode === 'generate' ? (p.item ? 'Mete en la cinta todo el producto que quepa (en el modo sandbox del juego).' : '⚠ Elige el producto que genera.')
-          : p.mode === 'consume' ? `Retira de la cinta ${p.item ? 'ese producto' : 'todo lo que pasa'} (en el modo sandbox del juego).` : 'Solo mide lo que pasa.'}</p>
-        ${belt === null ? '<p class="bad-text small">⚠ No está encima de ninguna cinta.</p>' : `<p class="muted small">Sobre la <span class="link" data-goto="${belt}">cinta #${belt}</span>.</p>`}
-        <h4>Medida</h4>
-        ${field('Ciclo (s)', pNum('cycle', p.cycle, 'min="0.1" step="1"'))}
-        ${field('Flujo objetivo', pNum('target', p.target, 'min="0" step="1"'))}`;
+      h += `<h4>Sandbox</h4>${pChips('mode', [['none', t('mon.measure')], ['generate', t('mon.generate')], ['consume', t('mon.consume')]], p.mode)}
+        ${field(t('p.product'), pItem('item', p.item, p.mode === 'consume' ? t('mon.all') : t('mon.none')))}
+        <p class="muted small">${p.mode === 'generate' ? (p.item ? t('mon.genNote') : t('mon.genPick'))
+          : p.mode === 'consume' ? t('mon.conNote', { item: p.item }) : t('mon.measureNote')}</p>
+        ${belt === null ? `<p class="bad-text small">${t('mon.noBelt')}</p>` : `<p class="muted small">${t('mon.onBelt', { i: belt })}</p>`}
+        <h4>${t('mon.measureH')}</h4>
+        ${field(t('mon.cycle'), pNum('cycle', p.cycle, 'min="0.1" step="1"'))}
+        ${field(t('mon.target'), pNum('target', p.target, 'min="0" step="1"'))}`;
     } else if (id === 2020 && !multi) {
       const pb = portBelts(b), v = SPLIT[b.modelIndex];
       const ports = v ? v.ports : [[0, 'N', 0], [1, 'E', 0], [2, 'S', 0], [3, 'W', 0]];
       const conn = ports.filter(([slot]) => pb[slot]);
-      h += `<h4>Prioridad</h4>`;
-      if (!conn.length) h += `<p class="muted small">Sin cintas enganchadas.</p>`;
+      h += `<h4>${t('split.prio')}</h4>`;
+      if (!conn.length) h += `<p class="muted small">${t('split.noBelts')}</p>`;
       for (const [slot, sideK, lv] of conn) {
         const c = pb[slot];
-        h += field(`${c.dir === 'in' ? 'Entrada' : 'Salida'} ${SIDE_ES[sideK]}${lv ? ' ↑' : ''}`,
-          `<div class="row">${pCheck(`priority.${slot}`, p.priority[slot], 'Prioridad')}<span class="link small" data-goto="${c.belt}">#${c.belt}</span></div>`);
+        h += field(`${c.dir === 'in' ? t('split.in') : t('split.out')} ${SIDE_NAME(sideK)}${lv ? ' ↑' : ''}`,
+          `<div class="row">${pCheck(`priority.${slot}`, p.priority[slot], t('split.prio'))}<span class="link small" data-goto="${c.belt}">#${c.belt}</span></div>`);
       }
       const prioOut = conn.some(([slot]) => pb[slot].dir === 'out' && p.priority[slot]);
-      h += `<h4>Filtro</h4>${pItem('filter', p.filter, 'Sin filtro')}
-        <p class="muted small">${prioOut ? 'Lo filtrado sale por la salida con prioridad; el resto, por las demás.' : (p.filter ? '⚠ El filtro solo actúa con una salida con prioridad.' : 'El filtro se aplica a la salida con prioridad.')}</p>`;
+      h += `<h4>${t('split.filter')}</h4>${pItem('filter', p.filter, t('depot.noFilter'))}
+        <p class="muted small">${prioOut ? t('split.prioOut') : (p.filter ? t('split.needPrio') : t('split.filterNote'))}</p>`;
     }
     return h;
   }
@@ -2500,7 +2504,7 @@
       const raw = t.dataset.v;
       applyProp(path, /^-?\d+(\.\d+)?$/.test(raw) ? +raw : raw);
     } else if (t.dataset.act === 'pickProp') {
-      openItemPicker(t, +t.dataset.cur || 0, t.dataset.empty || 'Nada', (id) => applyProp(path, id));
+      openItemPicker(t, +t.dataset.cur || 0, t.dataset.empty || I18N.t('pick.nothing'), (id) => applyProp(path, id));
     }
     return b;
   }
@@ -2531,13 +2535,14 @@
   // Lista de objetos con dibujo: el producto de cada receta usa el icono de su receta
   const ITEM_LIST = (() => {
     const m = new Map();
+    // name: en el idioma actual (si el objeto no tiene nombre propio, el de su receta)
+    const entry = (id, fallback, en) => ({ id, en, icon: null, get name() { const n = IT.itemName(id); return n.startsWith('#') ? fallback() : n; } });
     for (const r of Object.values(IT.RECIPE_INFO).sort((a, b) => a.id - b.id)) {
       if (!r.product || m.has(r.product)) continue;
-      const n = IT.itemName(r.product);
-      m.set(r.product, { id: r.product, name: n.startsWith('#') ? r.name : n, en: r.en || '', icon: r.icon || null });
+      m.set(r.product, Object.assign(entry(r.product, () => r.name, r.en || ''), { icon: r.icon || null }));
     }
-    for (const [id, n] of Object.entries(IT.MATERIALS)) if (!m.has(+id)) m.set(+id, { id: +id, name: n, en: '', icon: null });
-    for (const [id, en] of Object.entries(IT.ITEM_EN)) if (!m.has(+id) && !IT.BUILDINGS[id]) m.set(+id, { id: +id, name: IT.itemName(+id).startsWith('#') ? en : IT.itemName(+id), en, icon: null });
+    for (const [id, n] of Object.entries(IT.MATERIALS)) if (!m.has(+id)) m.set(+id, entry(+id, () => n, ''));
+    for (const [id, en] of Object.entries(IT.ITEM_EN)) if (!m.has(+id) && !IT.BUILDINGS[id]) m.set(+id, entry(+id, () => en, en));
     // el icono propio del objeto (icons/items) manda sobre el de su receta
     for (const it of m.values()) { const ic = IT.itemIcon(it.id); if (ic) { it.icon = ic; it.en = it.en || IT.ITEM_EN[it.id]; } }
     return [...m.values()].sort((a, b) => a.id - b.id);
@@ -2569,7 +2574,7 @@
     closeRecipePicker();
     const pop = document.createElement('div');
     pop.id = 'recipePop';
-    pop.innerHTML = `<input type="search" id="recipeSearch" placeholder="Buscar objeto…">
+    pop.innerHTML = `<input type="search" id="recipeSearch" placeholder="${esc(t('pick.searchItem'))}">
       <div class="rgrid">
         <button type="button" class="rtile" data-item="0">${itemIcon(0, 36)}<span>${esc(emptyLabel)}</span></button>
         ${ITEM_LIST.map((i) => `<button type="button" class="rtile${i.id === current ? ' cur' : ''}" data-item="${i.id}" title="${esc(i.name)}${i.en && i.en !== i.name ? ' / ' + esc(i.en) : ''} (${i.id})" data-en="${esc(i.en.toLowerCase())}">${itemIcon(i.id, 36)}<span>${esc(i.name)}</span></button>`).join('')}
@@ -2607,11 +2612,11 @@
     else if (act === 'copyWith') { copySelection(false, true); startPaste(); }
     else if (act === 'pickFilter') {
       const cur = [...S.sel].filter(isSorter)[0];
-      openItemPicker(t, cur ? cur.filterId : 0, 'Sin filtro (todo)', (id) => {
+      openItemPicker(t, cur ? cur.filterId : 0, I18N.t('sorter.noFilter'), (id) => {
         pushUndo(); for (const x of S.sel) if (isSorter(x)) x.filterId = id; refresh();
       });
     } else if (act === 'pickLabel') {
-      openItemPicker(t, b.parameters[0] || 0, 'Sin icono', (id) => {
+      openItemPicker(t, b.parameters[0] || 0, I18N.t('belt.noLabel'), (id) => {
         pushUndo(); for (const x of S.sel) if (isBelt(x)) x.parameters = id ? [id, 0] : []; refresh();
       });
     }
@@ -2628,7 +2633,7 @@
     return ICON_IMG[id].complete && ICON_IMG[id].naturalWidth ? ICON_IMG[id] : null;
   }
   function initials(name) {
-    const w = name.replace(/\(.*\)/, '').split(/\s+/).filter((x) => x && !/^(de|del|la|el|y|por)$/i.test(x));
+    const w = name.replace(/\(.*\)/, '').split(/\s+/).filter((x) => x && !/^(de|del|la|el|y|por|of|the|and)$/i.test(x));
     const mk = name.match(/Mk\.(I+)/);
     if (mk) return w[0][0].toUpperCase() + mk[1].length;
     return (w.length > 1 ? w[0][0] + w[1][0] : w[0].slice(0, 2)).toUpperCase();
@@ -2640,7 +2645,7 @@
     return `<span class="ricon badge g-${info ? info.group : 'x'}" style="width:${size}px;height:${size}px;font-size:${Math.round(size * (txt.length > 3 ? 0.3 : 0.38))}px">${esc(txt)}</span>`;
   }
   function recipeButton(current) {
-    const label = current === null ? 'recetas distintas' : current ? (IT.RECIPE_INFO[current] || { name: 'Receta #' + current }).name : 'Sin receta';
+    const label = current === null ? t('recipe.mixed') : current ? (IT.RECIPE_INFO[current] || { name: t('recipe.n', { id: current }) }).name : t('recipe.none');
     return `<button type="button" class="rbtn" id="recipeBtn">${recipeIcon(current || 0, 28)}<span>${esc(label)}</span><span class="muted">▾</span></button>`;
   }
   // Recetas posibles para la selección (unión de los grupos de sus edificios)
@@ -2655,12 +2660,12 @@
     const cur = [...S.sel].find((b) => b.recipeId)?.recipeId;
     const pop = document.createElement('div');
     pop.id = 'recipePop';
-    pop.innerHTML = `<input type="search" id="recipeSearch" placeholder="Buscar receta…">
+    pop.innerHTML = `<input type="search" id="recipeSearch" placeholder="${esc(t('pick.searchRecipe'))}">
       <div class="rgrid">
-        <button type="button" class="rtile" data-recipe="0">${recipeIcon(0, 36)}<span>Sin receta</span></button>
+        <button type="button" class="rtile" data-recipe="0">${recipeIcon(0, 36)}<span>${esc(t('recipe.none'))}</span></button>
         ${list.map((r) => `<button type="button" class="rtile${r.id === cur ? ' cur' : ''}${r.known ? '' : ' unknown'}" data-recipe="${r.id}" title="${esc(r.name)}${r.en && r.en !== r.name ? ' / ' + esc(r.en) : ''} (#${r.id})" data-en="${esc((r.en || '').toLowerCase())}">${recipeIcon(r.id, 36)}<span>${esc(r.name)}</span></button>`).join('')}
       </div>
-      <div class="row"><label class="small muted">Otra (nº)</label><input type="number" id="recipeOther" min="0" style="width:80px"></div>`;
+      <div class="row"><label class="small muted">${t('recipe.other')}</label><input type="number" id="recipeOther" min="0" style="width:80px"></div>`;
     (btn.closest('.field, .wide') || btn).after(pop);
     const search = pop.querySelector('#recipeSearch');
     search.focus();
@@ -2684,11 +2689,11 @@
       const g = IT.RECIPE_GROUP[b.itemId];
       return g ? (!id || !group || g === group) : PRODUCTION.has(IT.buildingInfo(b.itemId).cat);
     });
-    if (!targets.length) { toast('Esa receta no vale para estos edificios', true); return; }
+    if (!targets.length) { toast(t('recipe.bad'), true); return; }
     pushUndo();
     for (const b of targets) b.recipeId = id;
     refresh();
-    if (targets.length < S.sel.size && S.sel.size > 1) toast(`Receta aplicada a ${targets.length} edificios`);
+    if (targets.length < S.sel.size && S.sel.size > 1) toast(t('recipe.applied', { n: targets.length }));
   }
   document.addEventListener('mousedown', (ev) => {
     const p = $('recipePop');
@@ -2717,8 +2722,8 @@
     } else if (t.id === 'btnApplyParams') {
       const b = [...S.sel][0];
       const vals = $('params').value.split(/[\s,;]+/).filter((v) => v !== '').map((v) => parseInt(v, 10));
-      if (vals.some((v) => !Number.isFinite(v))) { toast('Parámetros no válidos (solo enteros)', true); return; }
-      pushUndo(); b.parameters = vals; refresh(); toast('Parámetros aplicados');
+      if (vals.some((v) => !Number.isFinite(v))) { toast(I18N.t('params.bad'), true); return; }
+      pushUndo(); b.parameters = vals; refresh(); toast(I18N.t('params.ok'));
     }
   });
 
@@ -2746,7 +2751,7 @@
     }
     if (t.id === 'slots') {
       const b = [...S.sel][0], v = t.value.split(/[\s,;]+/).map((x) => parseInt(x, 10));
-      if (v.length !== 6 || v.some((x) => !Number.isFinite(x))) { toast('Se esperan 6 números', true); return; }
+      if (v.length !== 6 || v.some((x) => !Number.isFinite(x))) { toast(I18N.t('slots.bad'), true); return; }
       pushUndo();
       [b.outputToSlot, b.inputFromSlot, b.outputFromSlot, b.inputToSlot, b.outputOffset, b.inputOffset] = v;
       refresh(); return;
@@ -2771,7 +2776,7 @@
   $('dlgPaste').addEventListener('close', async () => {
     if ($('dlgPaste').returnValue !== 'ok') return;
     const text = $('pasteText').value.trim(); if (!text) return;
-    if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return;
+    if (S.dirty && !confirm(t('confirm.discard'))) return;
     await loadText(text, '', null);
   });
   $('btnCopy').onclick = copyCode;
@@ -2796,7 +2801,7 @@
 
   $('fileInput').addEventListener('change', async (ev) => {
     const f = ev.target.files[0]; if (!f) return;
-    if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) { ev.target.value = ''; return; }
+    if (S.dirty && !confirm(t('confirm.discard'))) { ev.target.value = ''; return; }
     await loadText(await f.text(), f.name, null);
     ev.target.value = '';
   });
@@ -2805,7 +2810,7 @@
     S.dirHandle = null;
     S.library = files.map((f) => ({ path: f.webkitRelativePath.split('/').slice(1).join('/') || f.name, file: f }))
       .sort((a, b) => a.path.localeCompare(b.path));
-    $('libPath').textContent = '(solo lectura)';
+    $('libPath').textContent = t('lib.readonly');
     renderLibrary(); learnFromLibrary();
   });
 
@@ -2828,7 +2833,7 @@
     const text = (e.clipboardData && e.clipboardData.getData('text')) || '';
     if (text.trim().startsWith('BLUEPRINT:')) {
       e.preventDefault();
-      if (S.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos y abrir el blueprint pegado?')) return;
+      if (S.dirty && !confirm(t('confirm.discardPaste'))) return;
       if (S.tool === 'paste') setTool('select');
       await loadText(text, '', null);
     }
@@ -2842,7 +2847,7 @@
   // Los edificios se identifican por su índice (i); los índices cambian al borrar.
   const DSP = (() => {
     const bsx = () => S.bp.buildings;
-    const get = (i) => { const b = bsx()[i]; if (!b) throw new Error(`No existe el edificio ${i}`); return b; };
+    const get = (i) => { const b = bsx()[i]; if (!b) throw new Error(`Building ${i} does not exist`); return b; };
     const arr = (v) => (Array.isArray(v) ? v : [v]);
     const kind = (b) => (isBelt(b) ? 'belt' : isSorter(b) ? 'sorter' : 'building');
     function describe(b) {
@@ -2865,7 +2870,7 @@
         const u0 = S.undo.length; S.lastMsg = null;
         const extra = fn() || {};
         if (extra.error) return { ok: false, error: extra.error };
-        if (S.undo.length <= u0) return { ok: false, error: (S.lastMsg && S.lastMsg.msg) || 'No ha cambiado nada' };
+        if (S.undo.length <= u0) return { ok: false, error: (S.lastMsg && S.lastMsg.msg) || 'Nothing changed' };
         return { ok: true, ...extra };
       } catch (e) { return { ok: false, error: e.message }; }
     }
@@ -2876,28 +2881,28 @@
     }
     const newIdx = (n0) => bsx().slice(n0).map((b) => bsx().indexOf(b));
     function anchor(spec) {
-      if (Array.isArray(spec)) { const a = findAnchor(spec[0], spec[1]); if (!a) throw new Error(`Nada donde enganchar en ${spec}`); return a; }
-      if (spec.belt !== undefined) { const b = get(spec.belt); if (!isBelt(b)) throw new Error(`${spec.belt} no es una cinta`); return { kind: 'belt', b, pos: [b.x, b.y] }; }
+      if (Array.isArray(spec)) { const a = findAnchor(spec[0], spec[1]); if (!a) throw new Error(`Nothing to attach to at ${spec}`); return a; }
+      if (spec.belt !== undefined) { const b = get(spec.belt); if (!isBelt(b)) throw new Error(`${spec.belt} is not a belt`); return { kind: 'belt', b, pos: [b.x, b.y] }; }
       if (spec.building !== undefined) {
         const b = get(spec.building), sl = slotsOf(b).find((s) => s.slot === spec.slot);
-        if (!sl) throw new Error(`El edificio ${spec.building} no tiene el hueco ${spec.slot} (huecos: ${slotsOf(b).map((s) => s.slot).join(', ') || 'ninguno'})`);
+        if (!sl) throw new Error(`Building ${spec.building} has no slot ${spec.slot} (slots: ${slotsOf(b).map((s) => s.slot).join(', ') || 'none'})`);
         return { kind: 'slot', b, slot: sl.slot, pos: sl.pos };
       }
-      throw new Error('Origen/destino: [x, y], { belt: i } o { building: i, slot: n }');
+      throw new Error('From/to: [x, y], { belt: i } or { building: i, slot: n }');
     }
 
     const api = {
       version: 1,
       help() {
-        return `DSP Blueprint Designer API (window.DSP) — ver API.md
-Consultar: info() · list({kind,itemId,near:[x,y,r],recipe}) · get(i) · catalog(texto) · recipes(itemId) · slots(i) · ports(i) · props(i) · balance([indices]) · checks() · simulate({openEnds}) · collisions()
-Archivo:   load(texto) (async) · export() (async) · newBlueprint(nombre) · setInfo({name,desc})
-Construir: place(itemId,x,y,{yaw,recipe,model}) · belt([[x,y],...],{tier,level}) · sorter(desde,hasta,{tier,filter})
-           duplicate(indices,dx,dy)
-Cambiar:   setRecipe(indices,id) · setFilter(indices,itemId) · setTier(indices,itemId) · setModel(i,modelo) · setLabel(indices,itemId)
-           setProps(indices,{...}) (estaciones, almacenes, distribuidor, receptor de rayos, divisor)
-           move(indices,dx,dy) · rotate(indices,veces) · remove(indices) · removeBeltLine(i) · clean()
-Editor:    select(indices) · selection() · undo() · redo() · fit()`;
+        return `DSP Blueprint Designer API (window.DSP) — see API.md
+Query:  info() · list({kind,itemId,near:[x,y,r],recipe}) · get(i) · catalog(text) · recipes(itemId) · slots(i) · ports(i) · props(i) · balance([indices]) · checks() · simulate({openEnds}) · collisions()
+File:   load(text) (async) · export() (async) · newBlueprint(name) · setInfo({name,desc})
+Build:  place(itemId,x,y,{yaw,recipe,model}) · belt([[x,y],...],{tier,level}) · sorter(from,to,{tier,filter})
+        duplicate(indices,dx,dy)
+Change: setRecipe(indices,id) · setFilter(indices,itemId) · setTier(indices,itemId) · setModel(i,model) · setLabel(indices,itemId)
+        setProps(indices,{...}) (stations, depots, distributor, ray receiver, splitter)
+        move(indices,dx,dy) · rotate(indices,times) · remove(indices) · removeBeltLine(i) · clean()
+Editor: select(indices) · selection() · undo() · redo() · fit() · setLang('en'|'es')`;
       },
       info() {
         if (!S.bp) return null;
@@ -2941,7 +2946,7 @@ Editor:    select(indices) · selection() · undo() · redo() · fit()`;
       setProps(indices, changes) {
         return act(() => {
           const l = arr(indices).map(get).filter((b) => PR.read(b));
-          if (!l.length) return { error: 'Ninguno de esos edificios tiene propiedades editables' };
+          if (!l.length) return { error: 'None of those buildings has editable properties' };
           pushUndo(); l.forEach((b) => PR.write(b, changes || {})); refresh();
           return { props: l.map((b) => PR.read(b)) };
         });
@@ -2949,9 +2954,9 @@ Editor:    select(indices) · selection() · undo() · redo() · fit()`;
       catalog(q) {
         const s = (q || '').toLowerCase();
         return Object.values(IT.BUILDINGS).filter((b) => !s || b.en.toLowerCase().includes(s) || b.name.toLowerCase().includes(s) || String(b.id) === s)
-          .map((b) => ({ itemId: b.id, name: b.en, nameEs: b.name, canPlace: !!S.templates[b.id], recipes: !!IT.RECIPE_GROUP[b.id] }));
+          .map((b) => ({ itemId: b.id, name: b.en, nameEs: b.es, canPlace: !!S.templates[b.id], recipes: !!IT.RECIPE_GROUP[b.id] }));
       },
-      recipes(itemId) { return IT.recipesFor(itemId).map((r) => ({ id: r.id, name: r.en || r.name, nameEs: r.name, product: r.product || null })); },
+      recipes(itemId) { return IT.recipesFor(itemId).map((r) => ({ id: r.id, name: r.en || r.es, nameEs: r.es || r.en, product: r.product || null })); },
       slots(i) {
         const b = get(i), used = usedSlots(b);
         return slotsOf(b).map((s) => ({ slot: s.slot, x: r2(s.pos[0]), y: r2(s.pos[1]), used: used.has(s.slot) }));
@@ -2961,9 +2966,9 @@ Editor:    select(indices) · selection() · undo() · redo() · fit()`;
 
       place(itemId, x, y, o = {}) {
         return act(() => {
-          if (!S.templates[itemId]) return { error: `No hay modelo para ${itemId} (catalog() dice cuáles se pueden colocar)` };
-          if (isBeltId(itemId)) return { error: 'Para cintas usa belt()' };
-          if (BP.SORTERS.has(itemId)) return { error: 'Para clasificadores usa sorter()' };
+          if (!S.templates[itemId]) return { error: `No model for ${itemId} (catalog() says which ones can be placed)` };
+          if (isBeltId(itemId)) return { error: 'Use belt() for belts' };
+          if (BP.SORTERS.has(itemId)) return { error: 'Use sorter() for sorters' };
           const b = makeBuilding(itemId, x, y, o.yaw || 0);
           if (itemId === 2020) b.modelIndex = o.model || S.splitModel;
           if (o.recipe !== undefined) b.recipeId = o.recipe;
@@ -2978,7 +2983,7 @@ Editor:    select(indices) · selection() · undo() · redo() · fit()`;
       belt(points, o = {}) {
         return act(() => {
           const pts = points.map((p) => [Math.round(p[0]), Math.round(p[1])]);
-          if (pts.length < 1) return { error: 'Hacen falta puntos' };
+          if (pts.length < 1) return { error: 'Points are needed' };
           let cells = [pts[0]];
           for (let k = 1; k < pts.length; k++) cells = cells.concat(beltPath(pts[k - 1], pts[k]).slice(1));
           const n0 = bsx().length;
@@ -3008,14 +3013,14 @@ Editor:    select(indices) · selection() · undo() · redo() · fit()`;
       },
       setRecipe(indices, id) { return act(() => { S.sel = new Set(arr(indices).map(get)); applyRecipe(id); }); },
       setFilter(indices, itemId) {
-        return act(() => { const l = arr(indices).map(get).filter(isSorter); if (!l.length) return { error: 'Ningún clasificador' }; pushUndo(); l.forEach((b) => { b.filterId = itemId || 0; }); refresh(); });
+        return act(() => { const l = arr(indices).map(get).filter(isSorter); if (!l.length) return { error: 'No sorter' }; pushUndo(); l.forEach((b) => { b.filterId = itemId || 0; }); refresh(); });
       },
       setTier(indices, itemId) { return act(() => { S.sel = new Set(arr(indices).map(get)); setTier(itemId); }); },
       setModel(i, model) {
-        return act(() => { const b = get(i); if (b.itemId === 2020 && !SPLIT[model]) return { error: `Modelos de divisor: ${Object.keys(SPLIT).join(', ')}` }; pushUndo(); b.modelIndex = model; refresh(); });
+        return act(() => { const b = get(i); if (b.itemId === 2020 && !SPLIT[model]) return { error: `Splitter models: ${Object.keys(SPLIT).join(', ')}` }; pushUndo(); b.modelIndex = model; refresh(); });
       },
       setLabel(indices, itemId) {
-        return act(() => { const l = arr(indices).map(get).filter(isBelt); if (!l.length) return { error: 'Ninguna cinta' }; pushUndo(); l.forEach((b) => { b.parameters = itemId ? [itemId, 0] : []; }); refresh(); });
+        return act(() => { const l = arr(indices).map(get).filter(isBelt); if (!l.length) return { error: 'No belt' }; pushUndo(); l.forEach((b) => { b.parameters = itemId ? [itemId, 0] : []; }); refresh(); });
       },
       move(indices, dx, dy) { return act(() => { S.sel = new Set(arr(indices).map(get)); pushUndo(); moveSelection(Math.round(dx), Math.round(dy)); refresh(); }); },
       rotate(indices, times = 1) {
@@ -3027,18 +3032,33 @@ Editor:    select(indices) · selection() · undo() · redo() · fit()`;
         });
       },
       remove(indices) { return act(() => { const set = new Set(arr(indices).map(get)); pushUndo(); removeBuildings(set); S.sel.clear(); refresh(); return { removed: set.size }; }); },
-      removeBeltLine(i) { return act(() => { const b = get(i); if (!isBelt(b)) return { error: `${i} no es una cinta` }; const set = beltLine(b, true); pushUndo(); removeBuildings(set); S.sel.clear(); refresh(); return { removed: set.size }; }); },
+      removeBeltLine(i) { return act(() => { const b = get(i); if (!isBelt(b)) return { error: `${i} is not a belt` }; const set = beltLine(b, true); pushUndo(); removeBuildings(set); S.sel.clear(); refresh(); return { removed: set.size }; }); },
       clean() { return act(() => { cleanSorters(); }); },
       select(indices) { S.sel = new Set(arr(indices).map(get)); refresh(); return { ok: true }; },
       selection() { return [...S.sel].map((b) => bsx().indexOf(b)); },
       undo() { undo(); return { ok: true }; },
       redo() { redo(); return { ok: true }; },
       fit() { fitView(); return { ok: true }; },
+      setLang(l) { I18N.setLang(l); return { ok: I18N.lang === l, lang: I18N.lang }; },
     };
     return api;
   })();
   const isBeltId = (id) => BP.BELTS.has(id);
   window.DSP = DSP;
+
+  // ------------------------------------------------------------------ idioma (js/i18n.js)
+  $('langSel').value = I18N.lang;
+  $('langSel').onchange = (e) => { I18N.setLang(e.target.value); e.target.blur(); };
+  I18N.onChange((l) => {
+    $('langSel').value = l;
+    closeRecipePicker(); closePortChooser();
+    if (S.library.length) renderLibrary(); else if (S.dirHandle) $('library').innerHTML = `<p class="muted small">${esc(t('lib.empty'))}</p>`;
+    if (S.library.length && !S.dirHandle) $('libPath').textContent = t('lib.readonly');
+    setDirty(S.dirty);
+    setTool(S.tool, S.placeItem);   // texto de ayuda y paleta
+    refresh();                      // inspector, avisos, barra de estado
+  });
+  I18N.apply(document);
 
   // ------------------------------------------------------------------ inicio
   loadTemplates();
