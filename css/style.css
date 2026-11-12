@@ -135,3 +135,15 @@ details.adv summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .type-row .num { margin-left: auto; color: var(--muted); }
 .bad-text { color: #ff6b6b; }
 .wide { margin: 4px 0; }
+
+/* Propiedades de edificios */
+.pcheck { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 4px 0; cursor: pointer; }
+.pcheck input { width: auto; margin: 0; }
+.row.wrap .grow { flex: 1; min-width: 0; }
+.fgrid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; }
+.ftile { aspect-ratio: 1; padding: 0; display: flex; align-items: center; justify-content: center; background: #1d2330; min-width: 0; }
+.ftile.banned { background: #3a1f1f; opacity: .7; }
+.slotrow { border-left: 3px solid #2c3445; padding-left: 6px; margin: 6px 0; }
+.slotcfg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 6px; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.slotcfg label { display: flex; flex-direction: column; gap: 2px; }
+.slotcfg input, .slotcfg select { width: 100%; min-width: 0; }

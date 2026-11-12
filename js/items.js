@@ -133,10 +133,23 @@
     1403: 'Esfera de restricción de aniquilación', 1404: 'Combinador de fotones', 1405: 'Propulsor',
     1406: 'Propulsor reforzado', 1501: 'Vela solar', 1502: 'Componente de estructura', 1503: 'Cohete portador',
     1801: 'Barra de combustible de hidrógeno', 1802: 'Barra de combustible de deuterio', 1803: 'Barra de antimateria',
-    5001: 'Dron logístico', 5002: 'Nave logística', 5003: 'Mecha',
+    5001: 'Dron logístico', 5002: 'Nave logística', 5003: 'Bot logístico',
+    1030: 'Tronco', 1031: 'Combustible vegetal', 1111: 'Prisma', 1128: 'Unidad de combustible', 1129: 'Unidad explosiva',
+    1130: 'Unidad explosiva de cristal', 1407: 'Motor', 1804: 'Barra de aniquilación extraña',
+    1601: 'Caja de munición Magnum', 1602: 'Caja de munición de titanio', 1603: 'Caja de munición de superaleación',
+    1604: 'Set de proyectiles', 1605: 'Set de proyectiles explosivos', 1606: 'Set de proyectiles de cristal',
+    1607: 'Cápsula de plasma', 1608: 'Cápsula de antimateria', 1609: 'Set de misiles', 1610: 'Set de misiles supersónicos',
+    1611: 'Set de misiles gravitatorios', 1612: 'Cápsula de interferencia', 1613: 'Cápsula supresora',
+    5101: 'Prototipo', 5102: 'Dron de precisión', 5103: 'Dron de ataque', 5111: 'Corbeta', 5112: 'Destructor',
+    5201: 'Matriz de la Niebla Oscura', 5202: 'Neurona de silicio', 5203: 'Recombinador de materia',
+    5204: 'Singularidad de negentropía', 5205: 'Elemento núcleo', 5206: 'Fragmento de energía',
     6001: 'Matriz electromagnética', 6002: 'Matriz de energía', 6003: 'Matriz estructural',
     6004: 'Matriz de información', 6005: 'Matriz de gravedad', 6006: 'Matriz universal',
   };
+
+  // Objetos con icono propio en icons/items/ID.webp (página Components de la wiki de Fandom): nombre en inglés
+  const ITEM_EN = {"1000": "Water", "1001": "Iron Ore", "1002": "Copper Ore", "1003": "Silicon Ore", "1004": "Titanium Ore", "1005": "Stone", "1006": "Coal", "1007": "Crude Oil", "1011": "Fire Ice", "1012": "Kimberlite Ore", "1013": "Fractal Silicon", "1014": "Grating Crystal", "1015": "Stalagmite Crystal", "1016": "Unipolar Magnet", "1030": "Log", "1031": "Plant Fuel", "1101": "Iron Ingot", "1102": "Magnet", "1103": "Steel", "1104": "Copper Ingot", "1105": "High-purity Silicon", "1106": "Titanium Ingot", "1107": "Titanium Alloy", "1108": "Stone Brick", "1109": "Energetic Graphite", "1110": "Glass", "1111": "Prism", "1112": "Diamond", "1113": "Crystal Silicon", "1114": "Refined Oil", "1115": "Plastic", "1116": "Sulfuric Acid", "1117": "Organic Crystal", "1118": "Titanium Crystal", "1119": "Titanium Glass", "1120": "Hydrogen", "1121": "Deuterium", "1122": "Antimatter", "1123": "Graphene", "1124": "Carbon Nanotube", "1125": "Frame Material", "1126": "Casimir Crystal", "1127": "Strange Matter", "1128": "Combustible Unit", "1129": "Explosive Unit", "1130": "Crystal Explosive Unit", "1131": "Foundation", "1141": "Proliferator Mk.I", "1142": "Proliferator Mk.II", "1143": "Proliferator Mk.III", "1201": "Gear", "1202": "Magnetic Coil", "1203": "Electric Motor", "1204": "Electromagnetic Turbine", "1205": "Super-magnetic Ring", "1206": "Particle Container", "1208": "Critical Photon", "1209": "Graviton Lens", "1210": "Space Warper", "1301": "Circuit Board", "1302": "Microcrystalline Component", "1303": "Processor", "1304": "Plane Filter", "1305": "Quantum Chip", "1401": "Plasma Exciter", "1402": "Particle Broadband", "1403": "Annihilation Constraint Sphere", "1404": "Photon Combiner", "1405": "Thruster", "1406": "Reinforced Thruster", "1407": "Engine", "1501": "Solar Sail", "1502": "Dyson Sphere Component", "1503": "Small Carrier Rocket", "1601": "Magnum Ammo Box", "1602": "Titanium Ammo Box", "1603": "Superalloy Ammo Box", "1604": "Shell Set", "1605": "High-Explosive Shell Set", "1606": "Crystal Shell Set", "1607": "Plasma Capsule", "1608": "Antimatter Capsule", "1609": "Missile Set", "1610": "Supersonic Missile Set", "1611": "Gravity Missile Set", "1612": "Jamming Capsule", "1613": "Suppressing Capsule", "1801": "Hydrogen Fuel Rod", "1802": "Deuteron Fuel Rod", "1803": "Antimatter Fuel Rod", "1804": "Strange Annihilation Fuel Rod", "5001": "Logistics Drone", "5002": "Interstellar Logistics Vessel", "5003": "Logistics Bot", "5101": "Prototype", "5102": "Precision Drone", "5103": "Attack Drone", "5111": "Corvette", "5112": "Destroyer", "5201": "Dark Fog Matrix", "5202": "Silicon-based Neuron", "5203": "Matter Recombinator", "5204": "Negentropy Singularity", "5205": "Core Element", "5206": "Energy Shard", "6001": "Electromagnetic Matrix", "6002": "Energy Matrix", "6003": "Structure Matrix", "6004": "Information Matrix", "6005": "Gravity Matrix", "6006": "Universe Matrix"};
+  const itemIcon = (id) => (ITEM_EN[id] ? `icons/items/${id}.webp` : null);
 
   // Recetas: id -> [nombre, grupo de edificio]. Grupos: smelt (hornos), asm (ensambladoras),
   // refine (refinería), chem (planta química), collider (colisionador). Comprobadas con
@@ -226,5 +239,5 @@
     return BUILDINGS[id] || { id, name: '#' + id, cat: 'assembly', w: 2, h: 2, short: String(id) };
   }
 
-  root.DSPItems = { CATS, MENU, BUILDINGS, MATERIALS, RECIPES, RECIPE_INFO, RECIPE_GROUP, recipesFor, itemName, recipeName, buildingInfo };
+  root.DSPItems = { CATS, MENU, BUILDINGS, MATERIALS, RECIPES, RECIPE_INFO, RECIPE_GROUP, ITEM_EN, itemIcon, recipesFor, itemName, recipeName, buildingInfo };
 })(typeof window !== 'undefined' ? window : globalThis);

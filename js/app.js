@@ -3,6 +3,7 @@
   'use strict';
   const BP = window.DSPBP;
   const IT = window.DSPItems;
+  const PR = window.DSPProps;   // propiedades de edificios (js/props.js)
   const $ = (id) => document.getElementById(id);
 
   // Colores por nivel, iguales para cintas y clasificadores (Mk.I amarillo, Mk.II verde, Mk.III azul)
@@ -555,11 +556,7 @@
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
         ctx.strokeRect(px - s * 0.45, py - s * 0.45, s * 0.9, s * 0.9);
       }
-      if (S.showLabels && b.parameters.length && b.parameters[0] > 0 && s > 12) {
-        ctx.fillStyle = '#fff'; ctx.font = `${Math.max(9, s * 0.35)}px Segoe UI`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        ctx.fillText(shortName(IT.itemName(b.parameters[0])), px, py - s * 0.35);
-      }
+      if (S.showLabels && b.parameters.length && b.parameters[0] > 0 && s > 5) drawItemBadge(b.parameters[0], px, py, Math.max(10, s * 0.75));
     } else if (isSorter(b)) {
       const [qx, qy] = w2s(b.x2 + ox, b.y2 + oy);
       const sc = o.selected ? '#fff' : (BELT_COLORS[b.itemId] || cat.color);
@@ -577,6 +574,8 @@
       ctx.lineTo(qx - Math.cos(ang - 0.6) * k, qy - Math.sin(ang - 0.6) * k);
       ctx.lineTo(qx - Math.cos(ang + 0.6) * k, qy - Math.sin(ang + 0.6) * k);
       ctx.fill();
+      // filtro: icono pequeño en el centro del clasificador
+      if (S.showLabels && b.filterId && s > 5) drawItemBadge(b.filterId, (px + qx) / 2, (py + qy) / 2, Math.max(9, s * 0.5));
     } else {
       const fp = footprint(b);
       // el icono del edificio (wiki) sustituye a los sprites recortados de capturas
@@ -804,6 +803,29 @@
 
   function order(b) { return isSorter(b) ? 2 : isBelt(b) ? 1 : 0; }
 
+  // Iconos de lo que sale por cada puerto de estación y del filtro de los divisores
+  function drawOutputIcons(list, offsetOf) {
+    const s = S.view.scale;
+    if (s < 5) return;
+    for (const b of list) {
+      const [ox, oy] = offsetOf(b);
+      if (PR.STATION_SLOTS[b.itemId]) {
+        const p = PR.read(b);
+        for (const q of beltPorts(b)) {
+          const port = p.ports[q.slot], slot = port && port.storage ? p.slots[port.storage - 1] : null;
+          if (!slot || !slot.item || port.dir === 2) continue;
+          // un poco hacia dentro de la estación, para no tapar la cinta
+          const [x, y] = w2s(q.pos[0] - q.dir[0] * 0.75 + ox, q.pos[1] - q.dir[1] * 0.75 + oy);
+          drawItemBadge(slot.item, x, y, Math.max(9, s * 0.6));
+        }
+      } else if (b.itemId === 2020 && b.filterId) {
+        // en la esquina noreste, para no tapar la cruz del divisor
+        const [x, y] = w2s(b.x + 0.42 + ox, b.y + 0.42 + oy);
+        drawItemBadge(b.filterId, x, y, Math.max(11, s * 0.6));
+      }
+    }
+  }
+
   function draw() {
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ctx.fillStyle = '#0f1218'; ctx.fillRect(0, 0, W, H);
@@ -846,6 +868,7 @@
     }
     drawList(visible.filter((b) => order(b) === 0 && b.z > 0.5));
     drawList(visible.filter(isSorter));
+    if (S.showLabels) drawOutputIcons(visible, offsetOf);
 
     // choques: los del blueprint (salvo lo que se está moviendo) y los de los fantasmas
     if (moving && (moving.dx || moving.dy)) {
@@ -1039,7 +1062,8 @@
         d = Math.hypot(wx - b.x, wy - b.y);
       }
       if (!hit || dimmed(b)) continue;
-      const o = order(b) + (b.z > 0.5 ? 0.5 : 0);
+      // el divisor ocupa la misma casilla que el final de sus cintas: dentro de su casilla gana él
+      const o = b.itemId === 2020 ? 1.5 : order(b) + (b.z > 0.5 ? 0.5 : 0);
       if (o > bestOrder || (o === bestOrder && d < bestD)) { best = b; bestOrder = o; bestD = d; }
     }
     return best;
@@ -2017,6 +2041,14 @@
         <h4>Recorrido</h4>
         ${field('Viene de', bs.some((x) => isBelt(x) && bs[x.outputObjIdx] === b) ? 'otra cinta' : (b.inputObjIdx >= 0 ? endLabel(b.inputObjIdx, b.inputFromSlot) : '<span class="muted">inicio</span>'))}
         ${field('Va a', b.outputObjIdx >= 0 ? endLabel(b.outputObjIdx, b.outputToSlot) : '<span class="muted">final</span>')}`;
+      // Cinta que sale de una estación: qué producto saca
+      const st = bs[b.inputObjIdx];
+      if (st && PR.STATION_SLOTS[st.itemId] && b.inputFromSlot >= 0 && b.inputFromSlot < 12) {
+        const sp = PR.read(st), k = b.inputFromSlot;
+        const opts = [[0, '—'], ...sp.slots.map((s, i) => [i + 1, s.item ? IT.itemName(s.item) : `Producto ${i + 1} (vacío)`])];
+        html += field('Producto que sale', `<select data-stport="${b.inputObjIdx}:${k}">${opts.map(([v, l]) =>
+          `<option value="${v}"${v === sp.ports[k].storage ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`);
+      }
     } else if (isSorter(b)) {
       const len = b.parameters[0] || 1;
       html += inspHead(b, `#${idx}`);
@@ -2036,6 +2068,7 @@
         html += `<h4>Variante <span class="muted small">(Tab)</span></h4><div class="chips col">${Object.entries(SPLIT).map(([m, v]) =>
           `<button type="button" class="chip${+m === b.modelIndex ? ' on' : ''}" data-act="split" data-id="${m}">${esc(v.short)} ${esc(v.name)}</button>`).join('')}</div>`;
       }
+      html += propsHTML(b);
       if (below) html += `<p class="muted small">Apilado sobre ${endLabel(bs.indexOf(below), -1)}.</p>`;
       const att = attachedSorters(new Set([b]));
       const ports = beltPorts(b);
@@ -2081,8 +2114,162 @@
       html += `<h4>Clasificadores (${sorters.length})</h4>${chips(SORTER_TIERS, (id) => tiers.size === 1 && tiers.has(id), 'tier')}
         ${itemButton('pickFilter', filters.size === 1 ? [...filters][0] : 0, filters.size === 1 ? 'Sin filtro (todo)' : 'Filtros distintos')}`;
     }
+    const same = new Set(list.map((b) => b.itemId));
+    if (same.size === 1 && PR.read(list[0])) html += propsHTML(list[0], true);
     html += `<div class="row wrap"><button id="btnRotSel">⟳ Girar</button><button id="btnCopySel">⧉ Copiar</button><button class="danger" id="btnDelSel">Borrar</button></div>`;
     return html;
+  }
+
+  // ------------------------------------------------------------------ propiedades (js/props.js)
+  // Los controles llevan data-p con la ruta del campo ("chargeMW", "slots.2.local", "priority.1"…).
+  // Se aplica a todos los seleccionados del mismo tipo que el primero.
+  const LOGIC = [[0, 'Almacén'], [1, 'Ofrecer'], [2, 'Pedir']];
+  const SIDE_ES = { N: 'norte', E: 'este', S: 'sur', W: 'oeste' };
+  // Icarus en el distribuidor: el 2 («dar y recoger») está comprobado en el juego; 1 y 3 son deducidos.
+  const ICARUS = [[2, 'Dar y recoger'], [1, 'Solo dar'], [3, 'Solo recoger'], [0, 'No']];
+  const DISTR = [[0, 'No'], [1, 'Ofrecer'], [2, 'Pedir']];
+
+  function pathObj(path, v) {
+    const keys = path.split('.'), root = {};
+    let o = root;
+    keys.forEach((k, i) => {
+      const last = i === keys.length - 1, nextIsIdx = !last && /^\d+$/.test(keys[i + 1]);
+      if (last) o[k] = v;
+      else { o[k] = o[k] || (nextIsIdx ? [] : {}); o = o[k]; }
+    });
+    return root;
+  }
+  function applyProp(path, v) {
+    const first = [...S.sel][0]; if (!first) return;
+    const list = [...S.sel].filter((b) => b.itemId === first.itemId);
+    pushUndo();
+    let changes = pathObj(path, v);
+    if (path === 'filtersAll') changes = { filters: Array(PR.DEPOT_SLOTS[first.itemId]).fill(v) };
+    for (const b of list) PR.write(b, changes);
+    refresh();
+  }
+  const pChips = (path, opts, cur) => `<div class="chips">${opts.map(([v, label]) =>
+    `<button type="button" class="chip${v === cur ? ' on' : ''}" data-act="setProp" data-p="${path}" data-v="${v}">${esc(label)}</button>`).join('')}</div>`;
+  const pSelect = (path, opts, cur) => `<select data-p="${path}">${opts.map(([v, label]) =>
+    `<option value="${v}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
+  const pNum = (path, v, attrs = '') => `<input type="number" data-p="${path}" value="${v}" ${attrs}>`;
+  const pCheck = (path, v, label) => `<label class="pcheck"><input type="checkbox" data-p="${path}"${v ? ' checked' : ''}> ${esc(label)}</label>`;
+  const pItem = (path, id, empty, cls = '') => `<button type="button" class="rbtn pick-btn ${cls}" data-act="pickProp" data-p="${path}" data-cur="${id}" data-empty="${esc(empty)}">${itemIcon(id, 22)}<span>${esc(id ? IT.itemName(id) : empty)}</span><span class="muted">▾</span></button>`;
+
+  // Cintas enganchadas a cada puerto: { slot: { belt, dir: 'in' | 'out' } } (in = la cinta entra en el edificio)
+  function portBelts(b) {
+    const idx = S.bp.buildings.indexOf(b), out = {};
+    S.bp.buildings.forEach((x, i) => {
+      if (!isBelt(x)) return;
+      if (x.outputObjIdx === idx && x.outputToSlot >= 0) out[x.outputToSlot] = { belt: i, dir: 'in' };
+      else if (x.inputObjIdx === idx && x.inputFromSlot >= 0) out[x.inputFromSlot] = { belt: i, dir: 'out' };
+    });
+    return out;
+  }
+
+  function propsHTML(b, multi) {
+    const p = PR.read(b); if (!p) return '';
+    const id = b.itemId;
+    let h = '';
+    if (id === 2208) {
+      h += `<h4>Modo</h4>${pChips('mode', [['power', 'Generar energía'], ['photon', 'Generar fotones']], p.mode)}
+        <p class="muted small">${p.mode === 'photon' ? 'Fabrica fotones críticos (sale por los puertos de cinta).' : 'Envía la energía de la esfera de Dyson a la red.'}</p>`;
+    } else if (id === 2107) {
+      h += `<h4>Producto</h4>${pItem('item', p.item, 'Sin producto')}
+        <h4>Distribución</h4>
+        ${field('Con Icarus', pSelect('icarus', ICARUS, p.icarus))}
+        ${field('Con otros distribuidores', pChips('distributors', DISTR, p.distributors))}
+        ${field('Carga máx. (MW)', pNum('chargeMW', p.chargeMW, 'step="0.3" min="0.3"'))}
+        ${pCheck('autoBots', p.autoBots, 'Reponer drones de distribución automáticamente')}`;
+    } else if (PR.DEPOT_SLOTS[id]) {
+      const anyF = p.filters.some(Boolean);
+      h += `<h4>Capacidad</h4>${field('Casillas usables', `<div class="row">${pNum('usable', p.usable, `min="0" max="${p.slots}" style="width:70px"`)}<span class="muted small">de ${p.slots}</span></div>`)}
+        <h4>Filtros <span class="muted small">(clic en una casilla)</span></h4>
+        <div class="wide"><div class="fgrid">${p.filters.map((f, i) =>
+          `<button type="button" class="ftile pick-btn${i >= p.usable ? ' banned' : ''}" data-act="pickProp" data-p="filters.${i}" data-cur="${f}" data-empty="Sin filtro" title="Casilla ${i + 1}: ${esc(f ? IT.itemName(f) : 'sin filtro')}">${f ? itemIcon(f, 20) : ''}</button>`).join('')}</div></div>
+        <div class="row wrap"><div class="wide grow">${pItem('filtersAll', 0, 'Filtrar todas con…')}</div>${anyF ? '<button type="button" data-act="setProp" data-p="filtersAll" data-v="0">Quitar filtros</button>' : ''}</div>`;
+    } else if (PR.STATION_SLOTS[id]) {
+      h += `<h4>Productos</h4>`;
+      p.slots.forEach((s, i) => {
+        h += `<div class="slotrow"><div class="wide">${pItem(`slots.${i}.item`, s.item, 'Vacío')}</div>${s.item ? `<div class="slotcfg">
+          <label>${p.interstellar ? 'Local' : 'Modo'} ${pSelect(`slots.${i}.local`, LOGIC, s.local)}</label>
+          ${p.interstellar ? `<label>Remoto ${pSelect(`slots.${i}.remote`, LOGIC, s.remote)}</label>` : ''}
+          <label>Límite ${pNum(`slots.${i}.max`, s.max, 'min="0" step="100"')}</label></div>` : ''}</div>`;
+      });
+      if (!multi) {
+        const pb = portBelts(b), used = Object.keys(pb).map(Number).filter((k) => k < 12).sort((x, y) => x - y);
+        const side = (slot) => { const pt = (BELT_PORTS[id] || []).find((q) => q[0] === slot); return pt ? SIDE_ES[pt[3]] : ''; };
+        if (used.length) {
+          const opts = [[0, '—'], ...p.slots.map((s, i) => [i + 1, s.item ? IT.itemName(s.item) : `Producto ${i + 1} (vacío)`])];
+          h += `<h4>Puertos de cinta</h4>${used.map((k) => {
+            const c = pb[k], label = `Puerto ${k} <span class="muted small">${side(k)}</span>`;
+            if (c.dir === 'in') return field(label, `<span class="muted">Entrada · <span class="link" data-goto="${c.belt}">cinta #${c.belt}</span></span>`);
+            return field(label, `<div class="row">${pSelect(`ports.${k}.storage`, opts, p.ports[k].storage)}<span class="link small" data-goto="${c.belt}">#${c.belt}</span></div>`);
+          }).join('')}<p class="muted small">En las salidas se elige qué producto sale a la cinta.</p>`;
+        }
+      }
+      h += `<h4>Ajustes de la estación</h4>
+        ${field('Carga máx. (MW)', pNum('chargeMW', p.chargeMW, 'step="1" min="0"'))}
+        ${field('Alcance drones (°)', pNum('droneRange', p.droneRange, 'min="20" max="180" step="1"'))}
+        ${field('Carga mín. drones (%)', pNum('droneMinLoad', p.droneMinLoad, 'min="1" max="100"'))}`;
+      if (p.interstellar) {
+        h += `${field('Alcance naves (AL)', `<div class="row">${pNum('vesselRangeLY', p.vesselRangeLY, 'min="1" step="1" style="width:70px"')}<span class="muted small">${p.vesselRangeLY >= 100 ? '∞' : '100 = ∞'}</span></div>`)}
+        ${field('Carga mín. naves (%)', pNum('vesselMinLoad', p.vesselMinLoad, 'min="1" max="100"'))}
+        ${field('Distancia curvatura (UA)', pNum('warpAU', p.warpAU, 'min="0.5" step="0.5"'))}
+        ${pCheck('warpersRequired', p.warpersRequired, 'Exigir curvadores')}
+        ${pCheck('orbitalCollector', p.orbitalCollector, 'Colector orbital')}`;
+      }
+      h += `${field('Apilado de salida', `<div class="row">${pNum('outgoingCount', p.outgoingCount, 'min="0" max="4" style="width:60px"')}<span class="muted small">0 = límite de tecnología</span></div>`)}
+        ${pCheck('autoDrones', p.autoDrones, 'Reponer drones automáticamente')}
+        ${p.interstellar ? pCheck('autoVessels', p.autoVessels, 'Reponer naves automáticamente') : ''}`;
+    } else if (id === 2020 && !multi) {
+      const pb = portBelts(b), v = SPLIT[b.modelIndex];
+      const ports = v ? v.ports : [[0, 'N', 0], [1, 'E', 0], [2, 'S', 0], [3, 'W', 0]];
+      const conn = ports.filter(([slot]) => pb[slot]);
+      h += `<h4>Prioridad</h4>`;
+      if (!conn.length) h += `<p class="muted small">Sin cintas enganchadas.</p>`;
+      for (const [slot, sideK, lv] of conn) {
+        const c = pb[slot];
+        h += field(`${c.dir === 'in' ? 'Entrada' : 'Salida'} ${SIDE_ES[sideK]}${lv ? ' ↑' : ''}`,
+          `<div class="row">${pCheck(`priority.${slot}`, p.priority[slot], 'Prioridad')}<span class="link small" data-goto="${c.belt}">#${c.belt}</span></div>`);
+      }
+      const prioOut = conn.some(([slot]) => pb[slot].dir === 'out' && p.priority[slot]);
+      h += `<h4>Filtro</h4>${pItem('filter', p.filter, 'Sin filtro')}
+        <p class="muted small">${prioOut ? 'Lo filtrado sale por la salida con prioridad; el resto, por las demás.' : (p.filter ? '⚠ El filtro solo actúa con una salida con prioridad.' : 'El filtro se aplica a la salida con prioridad.')}</p>`;
+    }
+    return h;
+  }
+  function propAction(t) {
+    const path = t.dataset.p, b = [...S.sel][0];
+    if (t.dataset.act === 'setProp') {
+      const raw = t.dataset.v;
+      applyProp(path, /^-?\d+(\.\d+)?$/.test(raw) ? +raw : raw);
+    } else if (t.dataset.act === 'pickProp') {
+      openItemPicker(t, +t.dataset.cur || 0, t.dataset.empty || 'Nada', (id) => applyProp(path, id));
+    }
+    return b;
+  }
+  // Prioridad del divisor: una sola entrada y una sola salida con prioridad
+  function splitterPriority(b, slot, on) {
+    const pb = portBelts(b), pr = PR.read(b).priority;
+    const dir = pb[slot] && pb[slot].dir;
+    for (let i = 0; i < 4; i++) if (on && i !== slot && pb[i] && pb[i].dir === dir) pr[i] = false;
+    pr[slot] = on;
+    return pr;
+  }
+  function propChange(t) {
+    const path = t.dataset.p, b = [...S.sel][0];
+    let v = t.type === 'checkbox' ? t.checked : t.value;
+    if (t.type === 'number') { v = parseFloat(v); if (!Number.isFinite(v)) { renderInspector(); return; } }
+    else if (t.tagName === 'SELECT' && /^-?\d+$/.test(v)) v = +v;
+    if (b.itemId === 2020 && path.startsWith('priority.')) {
+      pushUndo(); PR.write(b, { priority: splitterPriority(b, +path.split('.')[1], v) }); refresh(); return;
+    }
+    if (PR.STATION_SLOTS[b.itemId] && path.startsWith('ports.')) {
+      const k = +path.split('.')[1], c = portBelts(b)[k];
+      pushUndo(); PR.write(b, { ports: Object.assign([], { [k]: { dir: c && c.dir === 'in' ? 2 : 1, storage: v } }) }); refresh(); return;
+    }
+    applyProp(path, v);
   }
 
   // ------------------------------------------------------------------ objetos (filtros, iconos de cinta)
@@ -2095,8 +2282,27 @@
       m.set(r.product, { id: r.product, name: n.startsWith('#') ? r.name : n, en: r.en || '', icon: r.icon || null });
     }
     for (const [id, n] of Object.entries(IT.MATERIALS)) if (!m.has(+id)) m.set(+id, { id: +id, name: n, en: '', icon: null });
+    for (const [id, en] of Object.entries(IT.ITEM_EN)) if (!m.has(+id) && !IT.BUILDINGS[id]) m.set(+id, { id: +id, name: IT.itemName(+id).startsWith('#') ? en : IT.itemName(+id), en, icon: null });
+    // el icono propio del objeto (icons/items) manda sobre el de su receta
+    for (const it of m.values()) { const ic = IT.itemIcon(it.id); if (ic) { it.icon = ic; it.en = it.en || IT.ITEM_EN[it.id]; } }
     return [...m.values()].sort((a, b) => a.id - b.id);
   })();
+  // Imagen del icono de un objeto para dibujar en el lienzo (null mientras carga o si no hay)
+  const ITEM_IMG = {};
+  function itemImg(id) {
+    const it = ITEM_BY_ID.get(id), src = (it && it.icon) || IT.itemIcon(id);
+    if (!src) return null;
+    if (!ITEM_IMG[id]) { const im = new Image(); im.onload = requestDraw; im.src = src; ITEM_IMG[id] = im; }
+    return ITEM_IMG[id].complete && ITEM_IMG[id].naturalWidth ? ITEM_IMG[id] : null;
+  }
+  // Icono de objeto pequeño sobre un círculo oscuro, centrado en (x, y) con lado k
+  function drawItemBadge(id, x, y, k) {
+    const img = itemImg(id);
+    ctx.fillStyle = 'rgba(10,12,18,.8)';
+    ctx.beginPath(); ctx.arc(x, y, k * 0.62, 0, Math.PI * 2); ctx.fill();
+    if (img) ctx.drawImage(img, x - k / 2, y - k / 2, k, k);
+    else { ctx.fillStyle = '#fff'; ctx.font = `600 ${Math.max(7, k * 0.4)}px Segoe UI`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(initials(IT.itemName(id).replace(/^#/, '')), x, y); }
+  }
   const ITEM_BY_ID = new Map(ITEM_LIST.map((i) => [i.id, i]));
   function itemIcon(id, size) {
     const it = ITEM_BY_ID.get(id);
@@ -2137,6 +2343,7 @@
   }
   function inspectorAction(t) {
     const act = t.dataset.act, b = [...S.sel][0];
+    if (act === 'setProp' || act === 'pickProp') { propAction(t); return; }
     if (act === 'tier') setTier(+t.dataset.id);
     else if (act === 'lineSel') { S.sel = beltLine(b, true); refresh(); }
     else if (act === 'split') { pushUndo(); for (const x of S.sel) if (x.itemId === 2020) x.modelIndex = +t.dataset.id; refresh(); }
@@ -2266,6 +2473,11 @@
     if (t.id === 'hDesc') { pushUndo(); h.desc = t.value; return; }
     if (t.id === 'hLayout') { pushUndo(); h.layout = parseInt(t.value, 10) || 10; return; }
     if (t.dataset.icon !== undefined) { pushUndo(); h.icons[+t.dataset.icon] = parseInt(t.value, 10) || 0; renderInspector(); return; }
+    if (t.dataset.p) { propChange(t); return; }
+    if (t.dataset.stport) {
+      const [si, k] = t.dataset.stport.split(':').map(Number), st = S.bp.buildings[si];
+      pushUndo(); PR.write(st, { ports: Object.assign([], { [k]: { dir: 1, storage: +t.value } }) }); refresh(); return;
+    }
     if (t.dataset.f) {
       const b = [...S.sel][0], f = t.dataset.f, v = parseFloat(t.value);
       if (!Number.isFinite(v)) return;
@@ -2420,11 +2632,12 @@
       version: 1,
       help() {
         return `DSP Blueprint Designer API (window.DSP) — ver API.md
-Consultar: info() · list({kind,itemId,near:[x,y,r],recipe}) · get(i) · catalog(texto) · recipes(itemId) · slots(i) · ports(i) · collisions()
+Consultar: info() · list({kind,itemId,near:[x,y,r],recipe}) · get(i) · catalog(texto) · recipes(itemId) · slots(i) · ports(i) · props(i) · collisions()
 Archivo:   load(texto) (async) · export() (async) · newBlueprint(nombre) · setInfo({name,desc})
 Construir: place(itemId,x,y,{yaw,recipe,model}) · belt([[x,y],...],{tier,level}) · sorter(desde,hasta,{tier,filter})
            duplicate(indices,dx,dy)
 Cambiar:   setRecipe(indices,id) · setFilter(indices,itemId) · setTier(indices,itemId) · setModel(i,modelo) · setLabel(indices,itemId)
+           setProps(indices,{...}) (estaciones, almacenes, distribuidor, receptor de rayos, divisor)
            move(indices,dx,dy) · rotate(indices,veces) · remove(indices) · removeBeltLine(i) · clean()
 Editor:    select(indices) · selection() · undo() · redo() · fit()`;
       },
@@ -2451,7 +2664,16 @@ Editor:    select(indices) · selection() · undo() · redo() · fit()`;
           (f.recipe === undefined || b.recipeId === f.recipe) &&
           (!f.near || Math.hypot(b.x - f.near[0], b.y - f.near[1]) <= (f.near[2] || 3))).map(describe);
       },
-      get(i) { const b = get(i); return { ...describe(b), raw: JSON.parse(JSON.stringify(b)) }; },
+      get(i) { const b = get(i), p = PR.read(b); return { ...describe(b), ...(p ? { props: p } : {}), raw: JSON.parse(JSON.stringify(b)) }; },
+      props(i) { return PR.read(get(i)); },
+      setProps(indices, changes) {
+        return act(() => {
+          const l = arr(indices).map(get).filter((b) => PR.read(b));
+          if (!l.length) return { error: 'Ninguno de esos edificios tiene propiedades editables' };
+          pushUndo(); l.forEach((b) => PR.write(b, changes || {})); refresh();
+          return { props: l.map((b) => PR.read(b)) };
+        });
+      },
       catalog(q) {
         const s = (q || '').toLowerCase();
         return Object.values(IT.BUILDINGS).filter((b) => !s || b.en.toLowerCase().includes(s) || b.name.toLowerCase().includes(s) || String(b.id) === s)
