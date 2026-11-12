@@ -1,7 +1,7 @@
 // Simulación de flujo en régimen estable: cuántos objetos por minuto pasan por cada cinta, clasificador y
 // máquina una vez estabilizado el blueprint.
 //
-//   DSPSim.run(buildings, { openEnds }) → {
+//   DSPSim.run(buildings, { openEnds, fillDepots }) → {
 //     belts:    Map(cinta → { objeto: /min })            lo que pasa por la casilla (antes de que cojan de ella)
 //     sorters:  Map(clasificador → { objeto: /min })
 //     machines: Map(máquina → { r, rIn, rOut, limit, need, prod, got, made })
@@ -22,6 +22,9 @@
 //   · Sumideros: monitores que consumen, puertos de entrada de estaciones (lo que tengan en sus casillas) y
 //     almacenes sin clasificadores de salida. Con openEnds, también el final de las cintas sin salida (para probar
 //     sin poner consumidores); sin él, una cinta sin salida se llena y se para, como en el juego.
+//   · Con fillDepots, los almacenes se están llenando: admiten todo lo que les echen y sus clasificadores sacan
+//     lo que pueden; lo que sobra se acumula (cuenta como sumidero). Es lo que se ve en el juego hasta que se
+//     llenan. Sin él, régimen final: a un almacén con salidas solo le entra lo que se llevan.
 //   · Contrapresión: lo que no se consume no entra. Una máquina va a la velocidad que le permiten su entrada más
 //     escasa y lo que le pueden sacar (si se le llena una salida, se para).
 //   · Clasificadores: capacidad de js/rates.js (Mk.I 90/min con 1 casilla, 45 con 2, 30 con 3).
@@ -183,7 +186,7 @@
       let w = 0;
       if (isBelt(dst)) w = (dem[d] || {})[x] || 0;
       else if (machines.has(d)) { const m = machines.get(d), g = got(d); w = Math.max(0, want(m, x) - ((g.got[x] || 0) - ((g.gotBy[s] || {})[x] || 0))); }
-      else if (DEPOT.has(dst.itemId)) { const k = base(d), outs = depotOuts.get(k) || []; w = outs.length && !offersAway(k, x) ? outs.reduce((a, o) => a + sorterWant(o, x, dem, got), 0) : Infinity; }
+      else if (DEPOT.has(dst.itemId)) { const k = base(d), outs = depotOuts.get(k) || []; w = outs.length && !offersAway(k, x) && !opts.fillDepots ? outs.reduce((a, o) => a + sorterWant(o, x, dem, got), 0) : Infinity; }
       else if (isStation(dst)) w = stationAccepts(dst, x) ? Infinity : 0;
       return Math.min(cap(s), w);
     }
@@ -356,6 +359,12 @@
         }
       }
 
+      // almacenes llenándose: lo que entra y no sacan sus clasificadores se queda dentro
+      if (opts.fillDepots) for (const [k, inn] of ndepot) {
+        if (offerDist.has(k) || !(depotOuts.get(k) || []).length) continue;
+        const st = stock(k), left = depotLeft.get(k) || {};
+        for (const x in inn) add(bag(nsinks, k), x, inn[x] - ((st[x] || 0) - (left[x] || 0)));
+      }
       // lo que se llevan los distribuidores que ofrecen: lo que entra al almacén menos lo que sacan sus clasificadores
       const noffers = [];
       for (const [k, di] of offerDist) {

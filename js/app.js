@@ -30,6 +30,7 @@
     templates: {}, showLabels: true,
     showChecks: (() => { try { return localStorage.getItem('dspShowChecks') !== '0'; } catch (e) { return true; } })(),
     openEnds: (() => { try { return localStorage.getItem('dspOpenEnds') === '1'; } catch (e) { return false; } })(),
+    fillDepots: (() => { try { return localStorage.getItem('dspFillDepots') !== '0'; } catch (e) { return true; } })(),
     level: 'all', splitModel: 39, beltFlip: false,
   };
 
@@ -2014,11 +2015,11 @@
   // Comprobación de suministro: se recalcula en cada cambio (unos milisegundos)
   // Se recalculan solo si cambia el blueprint (S.edits cuenta los cambios), la opción de la simulación o el idioma
   function updateFlow() {
-    const k = S.bp ? [S.edits || 0, S.bp.buildings.length, S.openEnds, I18N.lang].join(':') : '';   // los avisos llevan texto
+    const k = S.bp ? [S.edits || 0, S.bp.buildings.length, S.openEnds, S.fillDepots, I18N.lang].join(':') : '';   // los avisos llevan texto
     if (S.bp && S.flowBp === S.bp && S.flowKey === k) return;
     S.flowBp = S.bp; S.flowKey = k;
     S.flow = S.bp ? FL.analyze(S.bp.buildings) : null;
-    S.sim = S.bp ? SM.run(S.bp.buildings, { openEnds: S.openEnds }) : null;
+    S.sim = S.bp ? SM.run(S.bp.buildings, { openEnds: S.openEnds, fillDepots: S.fillDepots }) : null;
     S.flowMarks = new Map();
     if (S.flow) for (const x of S.flow.issues) if (x.level === 'error' || !S.flowMarks.has(x.i)) S.flowMarks.set(x.i, x.level);
   }
@@ -2343,6 +2344,7 @@
     const none = (txt) => `<p class="muted small">${txt}</p>`;
     return `<hr class="sep"><h3>${t('sim.title')}</h3>
       <p class="muted small">${t('sim.note')}</p>
+      <label class="pcheck"><input type="checkbox" id="fillDepots"${S.fillDepots ? ' checked' : ''}> ${t('sim.fillDepots')}</label>
       <label class="pcheck"><input type="checkbox" id="openEnds"${S.openEnds ? ' checked' : ''}> ${t('sim.openEnds')}</label>
       ${ms.length ? `<p class="small"><span class="ok-text">${t('sim.machines', { full, n: ms.length })}</span>${slow.length ? ` · <span class="warn-text">${t('sim.below', { n: slow.length })}</span>` : ''}</p>${rows}` : ''}
       ${jams}${idle}
@@ -2737,6 +2739,7 @@
     if (t.id === 'hLayout') { pushUndo(); h.layout = parseInt(t.value, 10) || 10; return; }
     if (t.dataset.icon !== undefined) { pushUndo(); h.icons[+t.dataset.icon] = parseInt(t.value, 10) || 0; renderInspector(); return; }
     if (t.dataset.p) { propChange(t); return; }
+    if (t.id === 'fillDepots') { S.fillDepots = t.checked; try { localStorage.setItem('dspFillDepots', t.checked ? '1' : '0'); } catch (e) { /* sin almacenamiento */ } refresh(); return; }
     if (t.id === 'openEnds') { S.openEnds = t.checked; try { localStorage.setItem('dspOpenEnds', t.checked ? '1' : '0'); } catch (e) { /* sin almacenamiento */ } refresh(); return; }
     if (t.dataset.f) {
       const b = [...S.sel][0], f = t.dataset.f, v = parseFloat(t.value);
@@ -2897,7 +2900,7 @@
       version: 1,
       help() {
         return `DSP Blueprint Designer API (window.DSP) — see API.md
-Query:  info() · list({kind,itemId,near:[x,y,r],recipe}) · get(i) · catalog(text) · recipes(itemId) · slots(i) · ports(i) · props(i) · balance([indices]) · checks() · simulate({openEnds}) · collisions()
+Query:  info() · list({kind,itemId,near:[x,y,r],recipe}) · get(i) · catalog(text) · recipes(itemId) · slots(i) · ports(i) · props(i) · balance([indices]) · checks() · simulate({openEnds,fillDepots}) · collisions()
 File:   load(text) (async) · export() (async) · newBlueprint(name) · setInfo({name,desc})
 Build:  place(itemId,x,y,{yaw,recipe,model}) · belt([[x,y],...],{tier,level}) · sorter(from,to,{tier,filter})
         duplicate(indices,dx,dy)
@@ -2936,7 +2939,7 @@ Editor: select(indices) · selection() · undo() · redo() · fit() · setLang('
       balance(indices) { return S.bp ? RT.totals(indices === undefined ? bsx() : arr(indices).map(get)) : null; },
       simulate(opts) {
         if (!S.bp) return null;
-        const r = SM.run(bsx(), opts || { openEnds: S.openEnds }), obj = (m) => Object.fromEntries([...m].map(([k, v]) => [k, v]));
+        const r = SM.run(bsx(), opts || { openEnds: S.openEnds, fillDepots: S.fillDepots }), obj = (m) => Object.fromEntries([...m].map(([k, v]) => [k, v]));
         return { machines: obj(r.machines), belts: obj(r.belts), sorters: obj(r.sorters), sources: obj(r.sources), sinks: obj(r.sinks), jams: r.jams, iterations: r.iterations, converged: r.converged };
       },
       checks() {
