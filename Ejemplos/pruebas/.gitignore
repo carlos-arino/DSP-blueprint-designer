@@ -1,0 +1,4 @@
+# Material de pruebas (blueprints y capturas): no se sube lo nuevo.
+# Lo que ya está en el repositorio sigue versionado; para añadir algo: git add -f <archivo>
+*
+!.gitignore
