@@ -837,6 +837,16 @@
           const [x, y] = w2s(q.pos[0] - q.dir[0] * 0.75 + ox, q.pos[1] - q.dir[1] * 0.75 + oy);
           drawItemBadge(slot.item, x, y, Math.max(9, s * 0.6));
         }
+      } else if (b.itemId === 2030) {
+        // monitor en sandbox: «+» verde si genera, «−» rojo si consume, con el producto
+        const p = PR.read(b); if (p.mode === 'none') continue;
+        const [x, y] = w2s(b.x + ox, b.y + oy), k = Math.max(11, s * 0.7), gen = p.mode === 'generate';
+        if (p.item) drawItemBadge(p.item, x, y, k);
+        const [tx, ty] = [x + k * 0.55, y - k * 0.55], r = Math.max(6, k * 0.32);
+        ctx.fillStyle = gen ? '#5fcf7f' : '#e05555';
+        ctx.beginPath(); ctx.arc(tx, ty, r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#0f1218'; ctx.font = `bold ${Math.round(r * 1.8)}px Segoe UI`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(gen ? '+' : '−', tx, ty + 1);
       } else if (b.itemId === 2107 && b.filterId) {
         // producto del distribuidor logístico, en su esquina noroeste (la noreste es para la insignia ×N de la pila)
         const [x, y] = w2s(b.x - 0.7 + ox, b.y + 0.7 + oy);
@@ -2253,7 +2263,7 @@
     const l = S.flow.issues, err = l.filter((x) => x.level === 'error'), warn = l.filter((x) => x.level === 'warn');
     const MAX = 40, rows = [...err, ...warn].slice(0, MAX).map(issueRow).join('');
     return `<hr class="sep"><h3>Comprobación</h3>
-      <p class="muted small">Llega lo que pide cada receta por cintas con etiqueta, salidas de estaciones, almacenes o salidas de otras máquinas.</p>
+      <p class="muted small">Llega lo que pide cada receta por cintas con etiqueta, salidas de estaciones, almacenes, salidas de otras máquinas o monitores que generan.</p>
       ${l.length ? `<p class="small"><span class="bad-text">${err.length} errores</span> · <span class="warn-text">${warn.length} avisos</span>${l.length > MAX ? ` (se muestran ${MAX})` : ''}</p>${rows}` : '<p class="ok-text small">✓ A todas las máquinas les llega lo que necesitan y no hay mezclas.</p>'}
       <label class="pcheck"><input type="checkbox" id="showChecks"${S.showChecks ? ' checked' : ''}> Marcar los avisos en el plano</label>`;
   }
@@ -2315,6 +2325,11 @@
   const pCheck = (path, v, label) => `<label class="pcheck"><input type="checkbox" data-p="${path}"${v ? ' checked' : ''}> ${esc(label)}</label>`;
   const pItem = (path, id, empty, cls = '') => `<button type="button" class="rbtn pick-btn ${cls}" data-act="pickProp" data-p="${path}" data-cur="${id}" data-empty="${esc(empty)}">${itemIcon(id, 22)}<span>${esc(id ? IT.itemName(id) : empty)}</span><span class="muted">▾</span></button>`;
 
+  // Cinta bajo un monitor de tráfico (misma casilla y nivel), o null
+  function monitorBelt(m) {
+    const i = S.bp.buildings.findIndex((x) => isBelt(x) && Math.abs(x.x - m.x) < 0.5 && Math.abs(x.y - m.y) < 0.5 && Math.abs(x.z - m.z) < 0.5);
+    return i < 0 ? null : i;
+  }
   // Cintas enganchadas a cada puerto: { slot: { belt, dir: 'in' | 'out' } } (in = la cinta entra en el edificio)
   function portBelts(b) {
     const idx = S.bp.buildings.indexOf(b), out = {};
@@ -2380,6 +2395,16 @@
       h += `${field('Apilado de salida', `<div class="row">${pNum('outgoingCount', p.outgoingCount, 'min="0" max="4" style="width:60px"')}<span class="muted small">0 = límite de tecnología</span></div>`)}
         ${pCheck('autoDrones', p.autoDrones, 'Reponer drones automáticamente')}
         ${p.interstellar ? pCheck('autoVessels', p.autoVessels, 'Reponer naves automáticamente') : ''}`;
+    } else if (id === 2030) {
+      const belt = monitorBelt(b);
+      h += `<h4>Sandbox</h4>${pChips('mode', [['none', 'Solo medir'], ['generate', 'Generar'], ['consume', 'Consumir']], p.mode)}
+        ${field('Producto', pItem('item', p.item, p.mode === 'consume' ? 'Todo' : 'Ninguno'))}
+        <p class="muted small">${p.mode === 'generate' ? (p.item ? 'Mete en la cinta todo el producto que quepa (en el modo sandbox del juego).' : '⚠ Elige el producto que genera.')
+          : p.mode === 'consume' ? `Retira de la cinta ${p.item ? 'ese producto' : 'todo lo que pasa'} (en el modo sandbox del juego).` : 'Solo mide lo que pasa.'}</p>
+        ${belt === null ? '<p class="bad-text small">⚠ No está encima de ninguna cinta.</p>' : `<p class="muted small">Sobre la <span class="link" data-goto="${belt}">cinta #${belt}</span>.</p>`}
+        <h4>Medida</h4>
+        ${field('Ciclo (s)', pNum('cycle', p.cycle, 'min="0.1" step="1"'))}
+        ${field('Flujo objetivo', pNum('target', p.target, 'min="0" step="1"'))}`;
     } else if (id === 2020 && !multi) {
       const pb = portBelts(b), v = SPLIT[b.modelIndex];
       const ports = v ? v.ports : [[0, 'N', 0], [1, 'E', 0], [2, 'S', 0], [3, 'W', 0]];

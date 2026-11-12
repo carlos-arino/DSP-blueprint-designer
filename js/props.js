@@ -17,11 +17,15 @@
 //      · [326] carga mínima drones % · [327] carga mínima naves % · [328] apilado de salida (0 = límite de tecnología)
 //      · [330] reponer drones solos · [331] reponer naves solas
 //   Divisor (2020): [hueco 0..3] = 1 si ese puerto tiene prioridad. El filtro (filterId) va a la salida con prioridad.
+//   Monitor de tráfico (2030), medido con Ejemplos/pruebas/sandbox.txt: [2] flujo objetivo × 10 · [3] ciclo en ticks
+//      · [14] producto filtrado · [20] sandbox: 0 nada, 1 generar el producto filtrado, 2 consumir (lo filtrado o todo).
+//      Va encima de una cinta (misma casilla), sin conexión en el blueprint.
 (function (root) {
   const AU = 40000, LY = 60 * AU;
   const STATION_SLOTS = { 2103: 4, 2104: 5 };
   const DEPOT_SLOTS = { 2101: 30, 2102: 60 };
   const DEFAULT_MAX = { 2103: 5000, 2104: 10000 };
+  const MONITOR_MODES = ['none', 'generate', 'consume'];
   const PORT0 = 192, SET0 = 320;
   const r2 = (v) => Math.round(v * 100) / 100;
 
@@ -63,6 +67,7 @@
       };
     }
     if (id === 2020) return { priority: [0, 1, 2, 3].map((i) => !!g(i)), filter: b.filterId || 0 };
+    if (id === 2030) return { mode: MONITOR_MODES[g(20)] || 'none', item: g(14), cycle: r2(g(3) / 60), target: r2(g(2) / 10) };
     return null;
   }
 
@@ -124,6 +129,14 @@
       if ('outgoingCount' in o) set(8, Math.max(0, o.outgoingCount | 0));
       if ('autoDrones' in o) set(10, flag(o.autoDrones));
       if ('autoVessels' in o) set(11, flag(o.autoVessels));
+      return true;
+    }
+    if (id === 2030) {
+      const p = ensure(b, 128);
+      if ('mode' in o) p[20] = Math.max(0, MONITOR_MODES.indexOf(o.mode));
+      if ('item' in o) p[14] = o.item | 0;
+      if ('cycle' in o) p[3] = Math.max(1, Math.round(o.cycle * 60));
+      if ('target' in o) p[2] = Math.max(0, Math.round(o.target * 10));
       return true;
     }
     if (id === 2020) {

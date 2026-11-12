@@ -8,7 +8,9 @@
 //   }
 //
 // Fuentes de productos: cintas con etiqueta (se supone que traen ese producto), puertos de salida de
-// estaciones (el producto elegido), salidas de máquinas (su receta) y almacenes (lo que les entra y sus filtros).
+// estaciones (el producto elegido), salidas de máquinas (su receta), almacenes (lo que les entra y sus filtros)
+// y monitores de tráfico en modo «generar». Un monitor en modo «consumir» retira de la cinta lo filtrado (o todo):
+// lo que le llega queda en sinks.
 (function (root) {
   const IT = root.DSPItems, R = root.DSPRecipes || {}, P = root.DSPProps;
   const isBelt = (b) => b && b.itemId >= 2001 && b.itemId <= 2003;
@@ -19,7 +21,7 @@
   const names = (s) => [...s].map(name).join(', ');
 
   function analyze(bs) {
-    const items = new Map(), supplied = new Map(), issues = [];
+    const items = new Map(), supplied = new Map(), sinks = new Map(), issues = [];
     const get = (m, i) => { if (!m.has(i)) m.set(i, new Set()); return m.get(i); };
     let changed = true;
     const addAll = (m, i, src) => { const s = get(m, i); for (const x of src) if (x && !s.has(x)) { s.add(x); changed = true; } };
@@ -34,6 +36,29 @@
       if (o && !isBelt(o)) get(beltsIn, b.outputObjIdx).add([b.outputToSlot, i]);
       if (f && !isBelt(f)) get(beltsOut, b.inputObjIdx).add([b.inputFromSlot, i]);
     });
+
+    // monitores de tráfico: van encima de una cinta (misma casilla y nivel)
+    const beltAtCell = new Map();
+    bs.forEach((b, i) => { if (isBelt(b)) beltAtCell.set(`${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.z)}`, i); });
+    const consumers = new Map();   // cinta → monitor que consume
+    bs.forEach((b, i) => {
+      if (b.itemId !== 2030 || !P) return;
+      const p = P.read(b);
+      if (p.mode === 'none') return;
+      const bi = beltAtCell.get(`${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.z)}`);
+      if (bi === undefined) { issues.push({ level: 'warn', kind: 'monitor', i, msg: 'No está encima de ninguna cinta', items: [] }); return; }
+      if (p.mode === 'generate') {
+        if (p.item) addAll(items, bi, [p.item]);
+        else issues.push({ level: 'warn', kind: 'monitor', i, msg: 'Genera, pero no tiene producto elegido', items: [] });
+      } else consumers.set(bi, { i, item: p.item });
+    });
+    // lo que sigue por la cinta después de pasar por un monitor que consume
+    const after = (bi) => {
+      const s = get(items, bi), c = consumers.get(bi);
+      if (!c) return s;
+      addAll(sinks, c.i, c.item ? [...s].filter((x) => x === c.item) : s);
+      return c.item ? new Set([...s].filter((x) => x !== c.item)) : new Set();
+    };
 
     // fuentes fijas
     bs.forEach((b, i) => {
@@ -69,7 +94,8 @@
       bs.forEach((b, i) => {
         if (isBelt(b)) {
           const o = bs[b.outputObjIdx];
-          if (isBelt(o)) addAll(items, b.outputObjIdx, get(items, i));
+          if (isBelt(o)) addAll(items, b.outputObjIdx, after(i));
+          else after(i);
         } else if (isSorter(b)) {
           const got = take(b), dst = bs[b.outputObjIdx];
           if (!dst) return;
@@ -78,7 +104,7 @@
           else addAll(supplied, b.outputObjIdx, got);
         } else if (beltsIn.has(i) || beltsOut.has(i)) {
           // edificios con puertos de cinta
-          const inSet = new Set(); for (const [, bi] of beltsIn.get(i) || []) for (const x of get(items, bi)) inSet.add(x);
+          const inSet = new Set(); for (const [, bi] of beltsIn.get(i) || []) for (const x of after(bi)) inSet.add(x);
           if (P && P.STATION_SLOTS[b.itemId]) { addAll(supplied, i, inSet); return; }
           let pass = inSet;
           if (b.itemId === 2314) { const r = recipeOf(b); pass = new Set([...inSet, ...(r && [...inSet].some((x) => r.in.some(([id]) => id === x)) ? r.out.map(([id]) => id) : [])]); }
@@ -120,7 +146,7 @@
       const label = b.parameters && b.parameters[0];
       issues.push({ level: 'warn', kind: 'mix', i, msg: `Mezcla ${names(s)}${label ? ` (etiqueta: ${name(label)})` : ''}`, items: [...s] });
     });
-    return { items, supplied, issues };
+    return { items, supplied, sinks, issues };
   }
 
   root.DSPFlow = { analyze };
