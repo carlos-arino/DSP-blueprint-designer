@@ -2,7 +2,8 @@
  * Choques entre edificios (aproximados).
  * Cada edificio es un rectángulo (o un círculo) alineado con la rejilla, girado con su yaw.
  * Reglas:
- *   - los clasificadores no chocan con nada; las cintas no chocan entre sí (puentes, cruces);
+ *   - los clasificadores no chocan con edificios, pero dos clasificadores no pueden tocar la cinta en el mismo
+ *     punto (a menos de media casilla); las cintas no chocan entre sí (puentes, cruces);
  *   - divisor, monitor, apilador y pulverizador aceptan cintas debajo o dentro;
  *   - estaciones: base de 7×7 con las esquinas recortadas (cabe una Tesla en cada una);
  *     las cintas solo pueden entrar por los carriles de los puertos (3 casillas centrales de cada lado);
@@ -147,6 +148,24 @@
             if (!others && ord.get(b) <= ord.get(a)) continue;
             if (collides(a, b)) pairs.push([a, b]);
           }
+        }
+      }
+      // clasificadores que tocan la cinta en el mismo punto
+      const ends = (b) => {
+        const e = [];
+        if (b.inputFromSlot === -1) e.push([b.x, b.y, b.z || 0]);
+        if (b.outputToSlot === -1) e.push([b.x2, b.y2, b.z2 || 0]);
+        return e;
+      };
+      const sl = list.filter((b) => SORTERS.has(b.itemId)), sp = others ? others.filter((b) => SORTERS.has(b.itemId)) : sl;
+      const sord = new Map(sl.map((b, i) => [b, i]));
+      for (const a of sl) {
+        const ea = ends(a); if (!ea.length) continue;
+        for (const b of sp) {
+          if (a === b || (!others && sord.get(b) <= sord.get(a))) continue;
+          if (Math.abs(a.x - b.x) > 4 || Math.abs(a.y - b.y) > 4) continue;
+          const eb = ends(b);
+          if (ea.some(([x, y, z]) => eb.some(([u, v, w]) => Math.hypot(x - u, y - v) < 0.5 - EPS && Math.abs(z - w) < 0.5))) pairs.push([a, b]);
         }
       }
       return pairs;

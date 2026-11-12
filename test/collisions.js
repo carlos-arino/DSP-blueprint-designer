@@ -46,6 +46,13 @@ function walk(d) { return fs.readdirSync(d, { withFileTypes: true }).flatMap((e)
     ['escudo (rombo): cinta en la punta', mk(3008, 0, 0), mk(2001, 2, 0), true],
     ['torre de señal (cruz): cinta en la esquina', mk(3007, 0, 0), mk(2001, 2, 1), false],
   ];
+  // clasificadores que dejan en el mismo punto de la cinta
+  const so = (x, y, x2, y2, fromBelt) => ({ itemId: 2011, x, y, x2, y2, z: 0, z2: 0, yaw: 0, inputFromSlot: fromBelt ? -1 : 1, outputToSlot: fromBelt ? 7 : -1 });
+  const sameSpot = COL.find([so(1, 6.79, 1, 8), so(1, 9.21, 1, 8)]).length === 1;
+  const apart = COL.find([so(1, 6.79, 1, 8), so(1.86, 9.2, 1.86, 8)]).length === 0;
+  console.log(`${sameSpot ? 'OK    ' : 'FALLO '} dos clasificadores en el mismo punto de la cinta: choca`);
+  console.log(`${apart ? 'OK    ' : 'FALLO '} desplazados 0,86 (hueco 6): no choca`);
+  if (!sameSpot || !apart) total++;
   for (const [label, a, b, want] of cases) {
     const got = COL.collides(a, b);
     if (got !== want) total++;
