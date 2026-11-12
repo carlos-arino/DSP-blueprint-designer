@@ -9,6 +9,7 @@
 //               'sorter' (llega, pero sus clasificadores no dan abasto), 'output' (no le sacan lo que fabrica) o 'none'
 //     sources:  Map(edificio o cinta → { objeto: /min })   sinks: Map(edificio → { objeto: /min })
 //     jams:     [{ i, item, rate }]  cintas con mezcla en las que sobra un producto que nadie recoge (se atascan)
+//     offers:   [{ i, depot, item, rate, inflow }]  distribuidores que ofrecen: lo que sobra en su almacén y se llevan
 //     iterations, converged
 //   }
 //
@@ -16,7 +17,8 @@
 //   · Cintas: Mk.I 360/min, Mk.II 720, Mk.III 1800. Cada casilla es un nodo, así que los clasificadores de más
 //     arriba cogen primero. Lo que llega por detrás tiene prioridad sobre lo que entra por un lado.
 //   · Fuentes (meten lo que quepa y se consuma): puertos de salida de estaciones (cinta llena del producto elegido),
-//     monitores de tráfico que generan y cintas con etiqueta sin nada antes.
+//     monitores de tráfico que generan, cintas con etiqueta sin nada antes y almacenes con un distribuidor logístico
+//     encima (sus clasificadores y, si el almacén está sobre un divisor, las salidas del divisor).
 //   · Sumideros: monitores que consumen, puertos de entrada de estaciones (lo que tengan en sus casillas) y
 //     almacenes sin clasificadores de salida. Con openEnds, también el final de las cintas sin salida (para probar
 //     sin poner consumidores); sin él, una cinta sin salida se llena y se para, como en el juego.
@@ -79,6 +81,22 @@
     const base = (i) => { let n = 0; while (bs[i] && DEPOT.has(bs[i].itemId) && bs[bs[i].inputObjIdx] && DEPOT.has(bs[bs[i].inputObjIdx].itemId) && n++ < 20) i = bs[i].inputObjIdx; return i; };
     const depotOuts = new Map();
     bs.forEach((b, i) => { if (DEPOT.has(b.itemId)) for (const s of sOut.get(i) || []) list(depotOuts, base(i)).push(s); });
+    // Distribuidor logístico sobre un almacén. Si pide a otros distribuidores (o no trata con ellos), los drones
+    // traen su producto al almacén sin límite. Si ofrece, se lleva lo que sobra en el almacén después de que
+    // saquen sus clasificadores: el almacén admite todo lo que le echen de ese producto. Un almacén sobre un
+    // divisor vacía por las salidas del divisor: la columna divisor + almacén + distribuidor es un pequeño PLS.
+    const feed = new Map();                                  // almacén (base) → { objeto: Infinity }
+    const offerDist = new Map();                             // almacén (base) → distribuidor que ofrece
+    bs.forEach((b, i) => {
+      if (b.itemId !== 2107 || !b.filterId || !bs[b.inputObjIdx] || !DEPOT.has(bs[b.inputObjIdx].itemId)) return;
+      const k = base(b.inputObjIdx);
+      if (P && P.read(b).distributors === 1) offerDist.set(k, i);
+      else bag(feed, k)[b.filterId] = Infinity;
+    });
+    const offersAway = (k, x) => offerDist.has(k) && bs[offerDist.get(k)].filterId === +x;
+    const stock = (k) => ({ ...(depotIn.get(k) || {}), ...(feed.get(k) || {}) });
+    const colDepot = new Map();                              // divisor → almacén de encima
+    bs.forEach((b, i) => { if (DEPOT.has(b.itemId) && bs[b.inputObjIdx] && bs[b.inputObjIdx].itemId === 2020) colDepot.set(b.inputObjIdx, i); });
     const stationAccepts = (st, x) => P.read(st).slots.some((s) => s.item === +x);
     const isJunction = (j) => !!bs[j] && !isBelt(bs[j]) && !isStation(bs[j]) && (portOut.get(j) || []).length > 0;
 
@@ -99,6 +117,16 @@
         }
       }
     });
+    for (const [j, d] of colDepot) {
+      const f = feed.get(d); if (!f) continue;
+      const sp = bs[j], pr = P ? P.read(sp).priority : [];
+      const by = bs.findIndex((x) => x.itemId === 2107 && x.inputObjIdx >= 0 && base(x.inputObjIdx) === d);
+      for (const [slot, bi] of portOut.get(j) || []) {
+        const o = {};
+        for (const x in f) if (!(sp.filterId && pr[slot] && sp.filterId !== +x)) o[x] = cap(bi);
+        if (Object.keys(o).length) { offer[bi] = o; offerBy[bi] = by; }
+      }
+    }
     // Cinta con etiqueta como fuente: si antes de ella no entra nada en la cinta (ni cintas por un lado, ni
     // edificios, ni clasificadores, ni monitores) y después ninguna máquina deja ese producto en ella. Así una
     // etiqueta en una cinta de salida (lingotes que dejan los hornos) no se inventa producto.
@@ -141,7 +169,7 @@
     let moved = Array.from({ length: N }, () => ({}));
     let mainIn = Array.from({ length: N }, () => ({}));     // lo que llegó por detrás
     let depotIn = new Map();
-    let sinks = new Map(), sources = new Map(), jams = [];
+    let sinks = new Map(), sources = new Map(), jams = [], offers = [];
 
     // Lo que pide una máquina de x. Hacia atrás (demanda) se pide como si las demás entradas llegasen (si no, una
     // máquina que recibe poco pediría poco y nunca saldría de ahí); al repartir, solo lo que puede gastar.
@@ -155,7 +183,7 @@
       let w = 0;
       if (isBelt(dst)) w = (dem[d] || {})[x] || 0;
       else if (machines.has(d)) { const m = machines.get(d), g = got(d); w = Math.max(0, want(m, x) - ((g.got[x] || 0) - ((g.gotBy[s] || {})[x] || 0))); }
-      else if (DEPOT.has(dst.itemId)) { const outs = depotOuts.get(base(d)) || []; w = outs.length ? outs.reduce((a, o) => a + sorterWant(o, x, dem, got), 0) : Infinity; }
+      else if (DEPOT.has(dst.itemId)) { const k = base(d), outs = depotOuts.get(k) || []; w = outs.length && !offersAway(k, x) ? outs.reduce((a, o) => a + sorterWant(o, x, dem, got), 0) : Infinity; }
       else if (isStation(dst)) w = stationAccepts(dst, x) ? Infinity : 0;
       return Math.min(cap(s), w);
     }
@@ -167,6 +195,7 @@
       const items = new Set();
       for (const o of offer) if (o) for (const k in o) items.add(+k);
       for (const m of machines.values()) for (const k in m.prod) items.add(+k);
+      for (const f of feed.values()) for (const k in f) items.add(+k);
       for (const f of flow) for (const k in f) items.add(+k);
 
       // 1. demanda hacia atrás: cuánto de cada objeto se llevarían desde cada casilla en adelante
@@ -213,7 +242,7 @@
       const cur = new Map();                                 // máquina → lo recibido en esta vuelta
       for (const [mi, m] of machines) { cur.set(mi, { got: {}, gotBy: {}, pot: {}, avail: {}, scap: {} }); m.left = {}; m.outCap = {}; m.made = {}; for (const x in m.prod) m.left[x] = m.prod[x] * m.r; }
       const curGot = (d) => cur.get(d);
-      const depotLeft = new Map([...depotIn].map(([k, v]) => [k, { ...v }]));
+      const depotLeft = new Map([...new Set([...depotIn.keys(), ...feed.keys()])].map((k) => [k, stock(k)]));
       const sorterRoom = (s) => cap(s) - total(nmoved[s]);
 
       // de una máquina o almacén: entrega como mucho room
@@ -240,15 +269,30 @@
       // lo que podría llegarle a una máquina por el clasificador s (v: lo que hay en origen)
     const potential = (s, x, v) => { const d = bs[s].outputObjIdx; if (machines.has(d) && machines.get(d).need[x]) { const g = cur.get(d); add(g.pot, x, Math.min(v, cap(s))); add(g.avail, x, v); add(g.scap, x, cap(s)); } };
 
+      // Lo que podría llegar a cada almacén, sin mirar cuánto se pide de él: las máquinas que le echan a toda
+      // velocidad y las cintas con lo que llevaban en la vuelta anterior. Si se usase solo lo que entró (que
+      // depende de lo que piden las máquinas que sacan de él), una cadena máquina → almacén → máquina que
+      // empieza vacía se quedaría parada para siempre: la segunda pide poco porque recibe poco y viceversa.
+      const depotPot = new Map();
+      bs.forEach((s, i) => {
+        if (!isSorter(s)) return;
+        const si = s.inputObjIdx, d = s.outputObjIdx, src = bs[si], dst = bs[d];
+        if (!src || !dst || !DEPOT.has(dst.itemId)) return;
+        const from = machines.has(si) ? machines.get(si).prod : isBelt(src) ? flow[si] : null;
+        if (!from) return;
+        const pot = bag(depotPot, base(d));
+        for (const x in from) if (filterOk(i, x)) add(pot, x, Math.min(cap(i), from[x]));
+      });
+
       // a. de edificio a edificio (máquina → máquina, → almacén, almacén → máquina)
       bs.forEach((s, i) => {
         if (!isSorter(s)) return;
         const si = s.inputObjIdx, src = bs[si], dst = bs[s.outputObjIdx];
         if (!src || !dst || isBelt(src) || isBelt(dst)) return;
-        const xs = machines.has(si) ? Object.keys(machines.get(si).prod) : DEPOT.has(src.itemId) ? Object.keys(depotIn.get(base(si)) || {}) : [];
+        const xs = machines.has(si) ? Object.keys(machines.get(si).prod) : DEPOT.has(src.itemId) ? Object.keys(stock(base(si))) : [];
         for (const x of xs) {
           if (!filterOk(i, x)) continue;
-          potential(i, x, machines.has(si) ? machines.get(si).prod[x] : (depotIn.get(base(si)) || {})[x] || 0);
+          potential(i, x, machines.has(si) ? machines.get(si).prod[x] : Math.max(stock(base(si))[x] || 0, (depotPot.get(base(si)) || {})[x] || 0));
           deliver(i, +x, takeFrom(i, x, sorterWant(i, x, dem, curGot)));
         }
       });
@@ -279,7 +323,7 @@
         for (const s of dropAt[i]) {
           const si = bs[s].inputObjIdx, src = bs[si];
           if (isBelt(src)) continue;
-          const xs = machines.has(si) ? Object.keys(machines.get(si).prod) : DEPOT.has(src.itemId) ? Object.keys(depotIn.get(base(si)) || {}) : [];
+          const xs = machines.has(si) ? Object.keys(machines.get(si).prod) : DEPOT.has(src.itemId) ? Object.keys(stock(base(si))) : [];
           for (const x of xs) if (filterOk(s, x)) add(f, x, takeFrom(s, x, Math.max(0, Math.min(room(), (d[x] || 0) - (f[x] || 0)))));
         }
         nflow[i] = { ...f };
@@ -312,6 +356,16 @@
         }
       }
 
+      // lo que se llevan los distribuidores que ofrecen: lo que entra al almacén menos lo que sacan sus clasificadores
+      const noffers = [];
+      for (const [k, di] of offerDist) {
+        const x = bs[di].filterId, inflow = (ndepot.get(k) || {})[x] || 0;
+        const taken = (stock(k)[x] || 0) - ((depotLeft.get(k) || {})[x] || 0);
+        const rate = (depotOuts.get(k) || []).length ? Math.max(0, inflow - taken) : inflow;
+        noffers.push({ i: di, depot: k, item: x, rate, inflow });
+        if ((depotOuts.get(k) || []).length) add(bag(nsinks, di), x, rate);
+      }
+
       // 3. velocidad de cada máquina
       let delta = 0;
       for (const [mi, m] of machines) {
@@ -328,7 +382,8 @@
         }
         let rOut = 1, outItem = 0;
         for (const x in m.prod) { const r = (m.outCap[x] || 0) / m.prod[x]; if (r < rOut) { rOut = r; outItem = +x; } }
-        if (rOut < scarce - EPS) lim = { kind: 'output', item: outItem };
+        // si no le sacan lo que fabrica, lo que le llega es consecuencia (solo se le lleva lo que puede gastar)
+        if (rOut < 1 - EPS && rOut <= scarce + 0.01) lim = { kind: 'output', item: outItem };
         rIn = Math.min(1, rIn); rOut = Math.max(0, Math.min(1, rOut));
         if (final) { m.got = g.got; continue; }
         const r = Math.min(rIn, rOut);
@@ -340,7 +395,7 @@
         for (const k in nflow[i]) delta = Math.max(delta, Math.abs(nflow[i][k] - (flow[i][k] || 0)));
         for (const k in flow[i]) if (!(k in nflow[i])) delta = Math.max(delta, flow[i][k]);
       }
-      flow = nflow; pass = npass; moved = nmoved; mainIn = nmain; depotIn = ndepot; sinks = nsinks; sources = nsources;
+      flow = nflow; pass = npass; moved = nmoved; mainIn = nmain; depotIn = ndepot; sinks = nsinks; sources = nsources; offers = noffers;
       // atascos: en una cinta con mezcla sobra un producto que nadie recoge
       jams = [];
       for (let i = 0; i < N; i++) for (const k in rejected[i]) if (rejected[i][k] > 0.5 && Object.keys(flow[i]).length > 1) jams.push({ i, item: +k, rate: rejected[i][k] });
@@ -376,7 +431,7 @@
       sorters: new Map(moved.map((f, i) => [i, f]).filter(([i]) => isSorter(bs[i]))),
       machines: new Map([...machines].map(([i, m]) => [i, { r: m.r, rIn: m.rIn, rOut: m.rOut, limit: m.limit, need: m.need, prod: m.prod, got: m.got, made: m.made }])),
       sources: new Map([...sources].filter(([, v]) => Object.keys(v).length)), sinks: new Map([...sinks].filter(([, v]) => Object.keys(v).length)),
-      jams, iterations: it, converged,
+      jams, offers, iterations: it, converged,
     };
   }
 

@@ -9,7 +9,8 @@
 //   }
 //
 // Fuentes de productos: cintas con etiqueta (se supone que traen ese producto), puertos de salida de
-// estaciones (el producto elegido), salidas de máquinas (su receta), almacenes (lo que les entra y sus filtros)
+// estaciones (el producto elegido), salidas de máquinas (su receta), almacenes (lo que les entra, sus filtros y
+// el producto del distribuidor logístico que tengan encima, si no lo ofrece), almacenes sobre un divisor (vacían en sus salidas)
 // y monitores de tráfico en modo «generar». Un monitor en modo «consumir» retira de la cinta lo filtrado (o todo):
 // lo que le llega queda en sinks.
 (function (root) {
@@ -31,6 +32,10 @@
 
     // almacenes apilados: un solo contenedor (el de abajo)
     const base = (i) => { let b = bs[i], n = 0; while (b && DEPOT.has(b.itemId) && bs[b.inputObjIdx] && DEPOT.has(bs[b.inputObjIdx].itemId) && n++ < 20) { i = b.inputObjIdx; b = bs[i]; } return i; };
+    // columna divisor + almacén (+ distribuidor): lo que entra al divisor cae al almacén y del almacén sale
+    // por las salidas del divisor, como un pequeño PLS (divisor → almacén de encima)
+    const colDepot = new Map();
+    bs.forEach((b, i) => { if (DEPOT.has(b.itemId) && bs[b.inputObjIdx] && bs[b.inputObjIdx].itemId === 2020) colDepot.set(b.inputObjIdx, i); });
     // conexiones de cada edificio con cintas por puerto
     const beltsIn = new Map(), beltsOut = new Map();   // edificio → [[slot, cinta]]
     bs.forEach((b, i) => {
@@ -67,7 +72,8 @@
     bs.forEach((b, i) => {
       if (isBelt(b) && b.parameters && b.parameters[0] > 0) addAll(items, i, [b.parameters[0]]);
       if (DEPOT.has(b.itemId) && P) { const p = P.read(b); if (p && p.filters) addAll(items, base(i), p.filters.filter(Boolean)); }
-      if (b.itemId === 2107 && b.filterId && bs[b.inputObjIdx] && DEPOT.has(bs[b.inputObjIdx].itemId)) addAll(items, base(b.inputObjIdx), [b.filterId]);
+      // distribuidor sobre almacén: trae su producto, salvo que lo ofrezca a otros distribuidores (entonces lo saca)
+      if (b.itemId === 2107 && b.filterId && bs[b.inputObjIdx] && DEPOT.has(bs[b.inputObjIdx].itemId) && !(P && P.read(b).distributors === 1)) addAll(items, base(b.inputObjIdx), [b.filterId]);
       if (P && P.STATION_SLOTS[b.itemId]) {
         const p = P.read(b);
         for (const [slot, bi] of beltsOut.get(i) || []) {
@@ -111,6 +117,7 @@
           const inSet = new Set(); for (const [, bi] of beltsIn.get(i) || []) for (const x of after(bi)) inSet.add(x);
           if (P && P.STATION_SLOTS[b.itemId]) { addAll(supplied, i, inSet); return; }
           let pass = inSet;
+          if (colDepot.has(i)) { const d = colDepot.get(i); addAll(items, d, inSet); pass = new Set(get(items, d)); }
           if (b.itemId === 2314) { const r = recipeOf(b); pass = new Set([...inSet, ...(r && [...inSet].some((x) => r.in.some(([id]) => id === x)) ? r.out.map(([id]) => id) : [])]); }
           const outs = [...(beltsOut.get(i) || [])];
           if (b.itemId === 2020 && b.filterId && P) {
