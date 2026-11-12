@@ -4,17 +4,18 @@
 //   node tools/bp.js decode  BP.txt  [salida.json]   blueprint → JSON legible (con nombres de edificios)
 //   node tools/bp.js encode  BP.json [salida.txt]    JSON → blueprint (hash recalculado)
 //   node tools/bp.js check   BP.txt|BP.json          hash, choques y clasificadores sueltos
-//   node tools/bp.js info    BP.txt|BP.json          resumen por tipo de edificio
+//   node tools/bp.js info    BP.txt|BP.json          resumen por tipo de edificio, balance por minuto y potencia
 //
 // En el JSON, cada edificio lleva "_name" (solo informativo; se ignora al codificar). Las conexiones son índices
 // en la lista "buildings": si borras o reordenas edificios, ajusta outputObjIdx/inputObjIdx (o usa -1).
 // Ver API.md para el significado de cada campo.
 const fs = require('fs'), path = require('path');
 const BP = require('../js/codec.js');
-for (const f of ['recipes', 'items', 'geometry', 'shapes']) require(`../js/${f}.js`);
+for (const f of ['recipes', 'items', 'geometry', 'shapes', 'machines']) require(`../js/${f}.js`);
 const COL = require('../js/collision.js').make(globalThis.DSPGeometry, globalThis.DSPItems);
 const IT = globalThis.DSPItems;
 const PR = require('../js/props.js');
+const RT = require('../js/rates.js');
 
 const name = (id) => (IT.BUILDINGS[id] ? IT.BUILDINGS[id].en : IT.itemName(id));
 
@@ -62,6 +63,17 @@ const out = (data, file) => (file ? fs.writeFileSync(file, data) : process.stdou
     for (const b of bp.buildings) c.set(b.itemId, (c.get(b.itemId) || 0) + 1);
     console.log(`${bp.header.shortDesc || '(sin nombre)'} · ${bp.buildings.length} edificios`);
     for (const [id, n] of [...c].sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(4)}  ${name(id)} (${id})`);
+    // balance por minuto (máquinas sin parar, sin proliferador) y potencia
+    const t = RT.totals(bp.buildings), f = (v) => (Math.round(v * 100) / 100).toString().padStart(9);
+    const kw = (v) => (v >= 1000 ? `${(v / 1000).toFixed(2)} MW` : `${v.toFixed(1)} kW`);
+    if (t.items.length) {
+      console.log(`
+Balance por minuto (${t.machines} máquinas)        entra      sale      neto`);
+      for (const [id, i, o] of t.items) console.log(`  ${name(id).padEnd(34).slice(0, 34)}${f(i)} ${f(o)} ${f(o - i)}`);
+    }
+    console.log(`
+Consumo: ${kw(t.work)} trabajando · ${kw(t.idle)} en reposo${t.gen ? ` · genera ${kw(t.gen)}` : ''}`);
+    if (t.notes.length) console.log(t.notes.join(' · '));
   } else {
     console.error(`Orden desconocida: ${cmd}`); process.exit(1);
   }

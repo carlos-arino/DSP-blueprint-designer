@@ -43,6 +43,7 @@ const code = await DSP.export()                             // texto BLUEPRINT:.
 | `slots(i)` | Huecos de clasificador del edificio: `{ slot, x, y, used }` |
 | `ports(i)` | Puertos de cinta (divisor, estaciones, intercambiador…): `{ slot, x, y, dir, level }` |
 | `props(i)` | Propiedades legibles del edificio (ver «Propiedades» más abajo), o `null` si no tiene |
+| `balance(indices)` | Balance por minuto de esos edificios (o de todo el blueprint): `{ items: [[objeto, entra, sale]], machines, work, idle, gen, notes }`, con la potencia en kW. Ver «Ritmos y potencia» |
 | `collisions()` | Pares que chocan en el blueprint actual |
 
 En `list()` y `get()` cada edificio trae `i, itemId, name, kind, x, y, z, yaw` y además:
@@ -98,6 +99,12 @@ En `list()` y `get()` cada edificio trae `i, itemId, name, kind, x, y, z, yaw` y
 | Estaciones (2103, 2104) | `slots`: `[{ item, local, remote, max }]` con 0 almacén, 1 ofrecer, 2 pedir (al poner un producto en una casilla vacía, el límite es 5000 en la PLS y 10000 en la ILS si no se da `max`) · `ports`: 12 puertos `{ dir, storage }` (dir 1 sale, 2 entra; storage = nº de producto 1…n que sale por ese puerto) · `chargeMW`, `droneRange` (grados), `droneMinLoad`, `vesselRangeLY` (100 = ∞), `vesselMinLoad`, `warpAU`, `warpersRequired`, `orbitalCollector`, `outgoingCount` (0 = límite de tecnología), `autoDrones`, `autoVessels` |
 | Divisor (2020) | `priority`: 4 booleanos por puerto (0 N, 1 E, 2 S, 3 O en el de 4 lados); `filter`: producto que sale por la salida con prioridad |
 
+### Ritmos y potencia
+
+`get(i)` trae además, en las máquinas con receta, `rates`: `{ speed, base, cycle, in, out }` (tiempo de la receta, multiplicador de velocidad del edificio, segundos por ciclo y objetos por minuto), y en los edificios que gastan o generan electricidad, `power`: `{ work, idle }` en kW (negativo = genera). En estaciones y distribuidor, `work` es su potencia de carga configurada.
+
+Los cálculos (`js/rates.js`) suponen las máquinas trabajando sin parar y sin proliferador; los fraccionadores no entran porque su ritmo depende de la cinta. Datos: tiempos y cantidades de las recetas en `js/recipes.js` (`time`, `in`, `out`), velocidad y consumo de cada edificio en `js/machines.js` (de [factoriolab](https://github.com/factoriolab/factoriolab), `node tools/gen_machines.js`). Ejemplo: la ensambladora Mk.I tiene `speed: 0.75`, así que un engranaje (1 s) tarda 1,33 s y hace 45/min.
+
 ### Reglas que aplica (igual que el editor)
 
 - **Choques.** No se puede colocar nada que choque.
@@ -130,7 +137,7 @@ La lista completa está en `DSP.catalog()`.
 node tools/bp.js decode BP.txt  bp.json     # blueprint → JSON
 node tools/bp.js encode bp.json BP.txt      # JSON → blueprint (hash recalculado)
 node tools/bp.js check  BP.txt              # hash, choques, clasificadores sueltos (código de salida 2 si hay problemas)
-node tools/bp.js info   BP.txt              # resumen por tipo de edificio
+node tools/bp.js info   BP.txt              # resumen por tipo de edificio, balance por minuto y potencia
 ```
 
 El JSON es el blueprint completo. Cada edificio lleva `_name` y, si tiene, `_props` (propiedades legibles, ver «Propiedades»); los dos son solo informativos y se ignoran al codificar. Para cambiar propiedades sin tocar `parameters`, añade a un edificio `"props": { ... }` con los campos que cambian: se aplican al codificar. Campos principales de cada edificio:

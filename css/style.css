@@ -163,3 +163,15 @@ details.adv summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 #inspector .otile { width: 34px; height: 34px; }
 #inspector .otile img { width: 26px; height: 26px; }
 #inspector .otile .onone { font-size: 9px; }
+
+/* Receta: entradas, salidas y balance */
+.recipe-io { margin-top: 6px; }
+.io { display: flex; align-items: center; gap: 6px; margin: 2px 0; font-size: 12px; }
+.io .ion { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.io .ior { color: var(--accent); font-variant-numeric: tabular-nums; }
+table.rates { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.rates td { padding: 1px 3px; }
+table.rates td:first-child { width: 20px; }
+#inspector table.rates td.pos { color: var(--ok); }
+#inspector table.rates td.neg { color: var(--danger); }
+#inspector table.rates td.muted { color: var(--muted); }

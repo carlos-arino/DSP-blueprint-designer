@@ -4,6 +4,7 @@
   const BP = window.DSPBP;
   const IT = window.DSPItems;
   const PR = window.DSPProps;   // propiedades de edificios (js/props.js)
+  const RT = window.DSPRates;   // ritmos de producción y potencia (js/rates.js)
   const $ = (id) => document.getElementById(id);
 
   // Colores por nivel, iguales para cintas y clasificadores (Mk.I amarillo, Mk.II verde, Mk.III azul)
@@ -2030,6 +2031,7 @@
       ${field('Fecha', `<span class="muted">${date ? date.toLocaleString() : '—'}</span>`)}
       ${field('Hash', S.bp.hashOk ? '<span class="badge ok">válido</span>' : '<span class="badge bad">no coincidía</span>')}
       ${field('Tamaño', `<span class="muted">${S.bp.areas[0] ? S.bp.areas[0].size.x + ' × ' + S.bp.areas[0].size.y : '—'} (${S.bp.areas.length} área${S.bp.areas.length > 1 ? 's' : ''})</span>`)}
+      ${totalsHTML(S.bp.buildings, 'del blueprint')}
       <hr class="sep">
       <h3>Edificios (${S.bp.buildings.length})</h3>
       <p class="muted small">Clic en un tipo para seleccionarlos todos.</p>
@@ -2124,7 +2126,8 @@
       const below = b.inputObjIdx >= 0 && bs[b.inputObjIdx] && !isBelt(bs[b.inputObjIdx]) && !isSorter(bs[b.inputObjIdx]) &&
         Math.abs(bs[b.inputObjIdx].x - b.x) < 0.3 && Math.abs(bs[b.inputObjIdx].y - b.y) < 0.3 ? bs[b.inputObjIdx] : null;
       html += inspHead(b, `#${idx}${b.z > 0.5 ? ` · altura ${r2(b.z)}` : ''}`);
-      if (g || b.recipeId) html += `<h4>Receta <span class="muted small">(E)</span></h4><div class="wide">${recipeButton(b.recipeId)}</div>`;
+      if (g || b.recipeId) html += `<h4>Receta <span class="muted small">(E)</span></h4><div class="wide">${recipeButton(b.recipeId)}</div>${rateHTML(b)}`;
+      html += powerHTML(b);
       if (b.itemId === 2020 && SPLIT[b.modelIndex]) {
         html += `<h4>Variante <span class="muted small">(Tab)</span></h4><div class="chips col">${Object.entries(SPLIT).map(([m, v]) =>
           `<button type="button" class="chip${+m === b.modelIndex ? ' on' : ''}" data-act="split" data-id="${m}">${esc(v.short)} ${esc(v.name)}</button>`).join('')}</div>`;
@@ -2177,8 +2180,48 @@
     }
     const same = new Set(list.map((b) => b.itemId));
     if (same.size === 1 && PR.read(list[0])) html += propsHTML(list[0], true);
+    html += totalsHTML(list, 'de la selección');
     html += `<div class="row wrap"><button id="btnRotSel">⟳ Girar</button><button id="btnCopySel">⧉ Copiar</button><button class="danger" id="btnDelSel">Borrar</button></div>`;
     return html;
+  }
+
+  // ------------------------------------------------------------------ recetas, ritmos y potencia (js/rates.js)
+  const fmtRate = (v) => (v >= 100 ? Math.round(v) : v >= 10 ? Math.round(v * 10) / 10 : Math.round(v * 100) / 100).toLocaleString('es');
+  const fmtTime = (v) => `${Math.round(v * 1000) / 1000} s`.replace('.', ',');
+  const fmtPower = (kw) => (Math.abs(kw) >= 1000 ? `${(Math.round(kw / 10) / 100).toLocaleString('es')} MW` : `${(Math.round(kw * 10) / 10).toLocaleString('es')} kW`);
+  const ioRow = (id, n, perMin) => `<div class="io"><span class="ioi">${itemIcon(id, 22)}</span><span class="ion">${esc(IT.itemName(id))}</span>${n !== null ? `<span class="muted">×${n}</span>` : ''}<span class="ior">${fmtRate(perMin)}/min</span></div>`;
+  // Receta de una máquina: tiempo con su multiplicador, entradas y salidas por ciclo y por minuto
+  function rateHTML(b) {
+    const m = RT.machine(b);
+    if (!m) return b.itemId === 2314 && b.recipeId ? '<p class="muted small">El fraccionador convierte el 1 % de lo que pasa por la cinta: su ritmo depende de la cinta.</p>' : '';
+    const r = IT.RECIPE_INFO[b.recipeId] || {}, src = window.DSPRecipes[b.recipeId];
+    const sp = m.speed !== 1 ? `${fmtTime(m.base)} × 1/${String(m.speed).replace('.', ',')} = <b>${fmtTime(m.cycle)}</b>` : `<b>${fmtTime(m.cycle)}</b>`;
+    return `<div class="recipe-io">
+      ${field('Ciclo', `${sp} <span class="muted small">(velocidad x${String(m.speed).replace('.', ',')})</span>`)}
+      <div class="muted small">Entradas</div>${src.in.map(([id, n], i) => ioRow(id, n, m.in[i][1])).join('')}
+      <div class="muted small">Salidas</div>${src.out.map(([id, n], i) => ioRow(id, n, m.out[i][1])).join('')}
+    </div>`;
+  }
+  function powerHTML(b) {
+    const p = RT.power(b);
+    if (!p) return '';
+    if (p.work < 0) return `<h4>Energía</h4>${field('Genera', fmtPower(-p.work))}`;
+    return `<h4>Consumo</h4>${field('Trabajando', fmtPower(p.work))}${field('En reposo', fmtPower(p.idle))}`;
+  }
+  // Balance de un grupo de edificios: lo que se produce y consume por minuto y la potencia
+  function totalsHTML(list, what) {
+    const t = RT.totals(list);
+    if (!t.machines && !t.work && !t.gen) return '';
+    const rows = t.items.map(([id, i, o]) => {
+      const net = o - i, cls = Math.abs(net) < 1e-6 ? 'muted' : net > 0 ? 'pos' : 'neg';
+      return `<tr><td>${itemIcon(id, 18)}</td><td>${esc(IT.itemName(id))}</td><td class="num muted">${i ? fmtRate(i) : ''}</td><td class="num muted">${o ? fmtRate(o) : ''}</td><td class="num ${cls}">${net > 0 ? '+' : ''}${fmtRate(net)}</td></tr>`;
+    }).join('');
+    return `<hr class="sep"><h3>Balance ${what}</h3>
+      <p class="muted small">Por minuto, con las máquinas trabajando sin parar y sin proliferador.</p>
+      ${t.items.length ? `<table class="rates"><tr class="muted small"><td></td><td>${t.machines} máquinas</td><td class="num">entra</td><td class="num">sale</td><td class="num">neto</td></tr>${rows}</table>` : ''}
+      ${field('Consumo', `${fmtPower(t.work)} <span class="muted small">trabajando · ${fmtPower(t.idle)} en reposo</span>`)}
+      ${t.gen ? field('Genera', fmtPower(t.gen)) : ''}
+      ${t.notes.length ? `<p class="muted small">${esc(t.notes.join(' · '))}.</p>` : ''}`;
   }
 
   // ------------------------------------------------------------------ propiedades (js/props.js)
@@ -2689,7 +2732,7 @@
       version: 1,
       help() {
         return `DSP Blueprint Designer API (window.DSP) — ver API.md
-Consultar: info() · list({kind,itemId,near:[x,y,r],recipe}) · get(i) · catalog(texto) · recipes(itemId) · slots(i) · ports(i) · props(i) · collisions()
+Consultar: info() · list({kind,itemId,near:[x,y,r],recipe}) · get(i) · catalog(texto) · recipes(itemId) · slots(i) · ports(i) · props(i) · balance([indices]) · collisions()
 Archivo:   load(texto) (async) · export() (async) · newBlueprint(nombre) · setInfo({name,desc})
 Construir: place(itemId,x,y,{yaw,recipe,model}) · belt([[x,y],...],{tier,level}) · sorter(desde,hasta,{tier,filter})
            duplicate(indices,dx,dy)
@@ -2721,7 +2764,11 @@ Editor:    select(indices) · selection() · undo() · redo() · fit()`;
           (f.recipe === undefined || b.recipeId === f.recipe) &&
           (!f.near || Math.hypot(b.x - f.near[0], b.y - f.near[1]) <= (f.near[2] || 3))).map(describe);
       },
-      get(i) { const b = get(i), p = PR.read(b); return { ...describe(b), ...(p ? { props: p } : {}), raw: JSON.parse(JSON.stringify(b)) }; },
+      get(i) {
+        const b = get(i), p = PR.read(b), m = RT.machine(b), w = RT.power(b);
+        return { ...describe(b), ...(p ? { props: p } : {}), ...(m ? { rates: m } : {}), ...(w ? { power: w } : {}), raw: JSON.parse(JSON.stringify(b)) };
+      },
+      balance(indices) { return S.bp ? RT.totals(indices === undefined ? bsx() : arr(indices).map(get)) : null; },
       props(i) { return PR.read(get(i)); },
       setProps(indices, changes) {
         return act(() => {
