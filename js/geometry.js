@@ -24,10 +24,14 @@
   // Divisor: 3 variantes (modelo) con distintos puertos. [hueco, lado local, nivel (0 suelo, 1 elevado)]
   // Medido en tus blueprints; los marcados "sup" no aparecen conectados en ninguno todavía.
   root.DSPSplitter = {
-    38: { name: '4 lados (suelo)', short: '+', ports: [[0, 'N', 0], [1, 'E', 0] /* sup */, [2, 'S', 0], [3, 'W', 0] /* sup */] },
-    39: { name: 'Doble altura N-S', short: '⇅', ports: [[0, 'N', 0], [1, 'N', 1], [2, 'S', 0], [3, 'S', 1]] },
-    40: { name: 'Cruce: E-O suelo, N-S elevado', short: '╋', ports: [[0, 'N', 1] /* sup */, [1, 'E', 0], [2, 'S', 1], [3, 'W', 0]] },
+    38: { es: '4 lados (suelo)', en: '4 sides (ground)', short: '+', ports: [[0, 'N', 0], [1, 'E', 0] /* sup */, [2, 'S', 0], [3, 'W', 0] /* sup */] },
+    39: { es: 'Doble altura N-S', en: 'Two levels N-S', short: '⇅', ports: [[0, 'N', 0], [1, 'N', 1], [2, 'S', 0], [3, 'S', 1]] },
+    40: { es: 'Cruce: E-O suelo, N-S elevado', en: 'Crossing: E-W ground, N-S raised', short: '╋', ports: [[0, 'N', 1] /* sup */, [1, 'E', 0], [2, 'S', 1], [3, 'W', 0]] },
   };
+  // name: en el idioma de js/i18n.js
+  for (const v of Object.values(root.DSPSplitter)) {
+    Object.defineProperty(v, 'name', { get: () => (root.DSPI18n && root.DSPI18n.lang === 'es' ? v.es : v.en), enumerable: true });
+  }
   // Puertos de cinta: [hueco, x, y, lado, nivel] en local. La última cinta queda justo en (x, y).
   // Medidos en Ejemplos/pruebas/Almacenes.txt. El divisor está en DSPSplitter (depende del modelo).
   const STATION = [

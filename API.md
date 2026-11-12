@@ -1,139 +1,143 @@
-# API de DSP Blueprint Designer
+# DSP Blueprint Designer API
 
-Dos formas de que una IA (o un script) cree y modifique blueprints de **Dyson Sphere Program**:
+**English** · [Español](API.es.md)
 
-1. **`window.DSP` en el editor web.** La más completa: usa la misma lógica que el editor (choques, huecos, puertos de cinta, apilado, deshacer) y el resultado se ve en pantalla. Para IAs que controlan un navegador.
-2. **`tools/bp.js` en la línea de comandos.** Convierte un blueprint a JSON legible y de vuelta. Para IAs que editan archivos.
+Two ways for an AI (or a script) to create and modify **Dyson Sphere Program** blueprints:
+
+1. **`window.DSP` in the web editor.** The most complete one: it uses the same logic as the editor (collisions, slots, belt ports, stacking, undo) and you see the result on screen. For AIs that drive a browser.
+2. **`tools/bp.js` on the command line.** Converts a blueprint to readable JSON and back. For AIs that edit files.
 
 ---
 
-## 1. `window.DSP` (navegador)
+## 1. `window.DSP` (browser)
 
-Abre el editor (https://carlos-arino.github.io/DSP-blueprint-designer/ o `python tools/serve.py`) y ejecuta JavaScript en la página. Por ejemplo, desde la consola o con la herramienta de JavaScript de tu navegador automatizado:
+Open the editor (https://carlos-arino.github.io/DSP-blueprint-designer/ or `python tools/serve.py`) and run JavaScript in the page, for example from the console or with your automated browser's JavaScript tool:
 
 ```js
-DSP.help()                       // resumen de todos los métodos
-DSP.newBlueprint('Motores')
-const a = DSP.place(2303, 0, 0, { recipe: 97 })          // ensambladora con Motor eléctrico → { ok: true, i: 0 }
-DSP.place(2201, 2, 0)                                       // torre Tesla
-DSP.belt([[-3, 3], [7, 3]], { tier: 2002 })                 // cinta Mk.II de oeste a este en y = 3
+DSP.help()                       // summary of every method
+DSP.newBlueprint('Motors')
+const a = DSP.place(2303, 0, 0, { recipe: 97 })          // assembling machine making Electric Motor → { ok: true, i: 0 }
+DSP.place(2201, 2, 0)                                       // Tesla tower
+DSP.belt([[-3, 3], [7, 3]], { tier: 2002 })                 // Mk.II belt from west to east at y = 3
 const inBelt = DSP.list({ kind: 'belt', near: [0, 3, 0.5] })[0].i
-DSP.sorter({ belt: inBelt }, { building: a.i, slot: 1 })    // de la cinta al hueco 1 de la ensambladora
-const code = await DSP.export()                             // texto BLUEPRINT:... listo para pegar en el juego
+DSP.sorter({ belt: inBelt }, { building: a.i, slot: 1 })    // from the belt to slot 1 of the assembler
+const code = await DSP.export()                             // BLUEPRINT:... text ready to paste in the game
 ```
 
-### Convenciones
+### Conventions
 
-- **Coordenadas en casillas.** `x` crece hacia el este, `y` hacia el norte. Los edificios van en enteros.
-- **`yaw`** en grados, en sentido horario desde el norte: 0 = norte, 90 = este, 180 = sur, 270 = oeste.
-- **Edificios por índice `i`**, que es su posición en la lista. Los índices **cambian al borrar**, así que vuelve a consultar con `list()` después de `remove()`.
-- **Niveles de cinta:** 0 es el suelo, 1 elevada, etc. Una subida o bajada son dos cintas en la misma casilla.
-- **Resultados.** Los métodos que cambian algo devuelven `{ ok: true, ... }` o `{ ok: false, error: 'motivo' }`, y nunca lanzan excepciones. Si una acción choca, no se aplica y el error lo explica.
-- **Deshacer.** Todo se puede deshacer con `DSP.undo()`, y también con Ctrl+Z en el editor.
+- **Coordinates in cells.** `x` grows to the east, `y` to the north. Buildings go on integers.
+- **`yaw`** in degrees, clockwise from north: 0 = north, 90 = east, 180 = south, 270 = west.
+- **Buildings by index `i`**, their position in the list. Indices **change when you delete**, so query again with `list()` after `remove()`.
+- **Belt levels:** 0 is the ground, 1 raised, and so on. A ramp up or down is two belts in the same cell.
+- **Results.** Methods that change something return `{ ok: true, ... }` or `{ ok: false, error: 'reason' }` and never throw. If an action collides, it is not applied and the error explains why.
+- **Undo.** Everything can be undone with `DSP.undo()`, and also with Ctrl+Z in the editor.
+- **Language.** Names (`recipeName`, issue messages) follow the editor language. `DSP.setLang('en')` or `DSP.setLang('es')` changes it. `name` in `list()`, `catalog()` and `recipes()` is always the English game name.
 
-### Consultar
+### Query
 
-| Método | Devuelve |
+| Method | Returns |
 |---|---|
 | `info()` | `{ name, desc, buildings, belts, sorters, collisions, hashOk, dirty }` |
-| `list({ kind, itemId, near: [x, y, r], recipe })` | Edificios que cumplen el filtro (todos opcionales). `kind`: `'building'`, `'belt'` o `'sorter'`. `itemId` puede ser una lista |
-| `get(i)` | Descripción del edificio `i` y `raw`, con todos sus campos del blueprint |
-| `catalog(texto)` | Edificios disponibles: `{ itemId, name, nameEs, canPlace, recipes }`. `canPlace: false` significa que falta su modelo; abre un blueprint que lo contenga |
-| `recipes(itemId)` | Recetas que admite ese edificio: `{ id, name, nameEs, product }` |
-| `slots(i)` | Huecos de clasificador del edificio: `{ slot, x, y, used }` |
-| `ports(i)` | Puertos de cinta (divisor, estaciones, intercambiador…): `{ slot, x, y, dir, level }` |
-| `props(i)` | Propiedades legibles del edificio (ver «Propiedades» más abajo), o `null` si no tiene |
-| `simulate({ openEnds })` | Simulación de flujo en régimen estable (ver «Simulación de flujo») |
-| `checks()` | Comprobación de suministro: `{ issues, carries(i), supplied(i) }`. `issues` son `{ level: 'error' \| 'warn', kind, i, msg, items }` (`missing`: a la máquina le falta algo de su receta; `noout`: nadie saca lo que fabrica; `sorter`: sus clasificadores no dan abasto; `mix`: mezcla en una cinta; `station`: le entra algo que no tiene; `port`: puerto de salida sin producto). `carries(i)` dice qué lleva una cinta o almacén y `supplied(i)` qué le llega a una máquina |
-| `balance(indices)` | Balance por minuto de esos edificios (o de todo el blueprint): `{ items: [[objeto, entra, sale]], machines, work, idle, gen, notes }`, con la potencia en kW. Ver «Ritmos y potencia» |
-| `collisions()` | Pares que chocan en el blueprint actual |
+| `list({ kind, itemId, near: [x, y, r], recipe })` | Buildings that match the filter (all optional). `kind`: `'building'`, `'belt'` or `'sorter'`. `itemId` can be a list |
+| `get(i)` | Description of building `i` and `raw`, with all its blueprint fields |
+| `catalog(text)` | Available buildings: `{ itemId, name, nameEs, canPlace, recipes }`. `canPlace: false` means its model is missing; open a blueprint that contains it |
+| `recipes(itemId)` | Recipes that building accepts: `{ id, name, nameEs, product }` |
+| `slots(i)` | Sorter slots of the building: `{ slot, x, y, used }` |
+| `ports(i)` | Belt ports (splitter, stations, energy exchanger…): `{ slot, x, y, dir, level }` |
+| `props(i)` | Readable properties of the building (see «Properties» below), or `null` if it has none |
+| `simulate({ openEnds })` | Steady-state flow simulation (see «Flow simulation») |
+| `checks()` | Supply check: `{ issues, carries(i), supplied(i) }`. `issues` are `{ level: 'error' \| 'warn', kind, i, msg, items }` (`missing`: the machine lacks something its recipe needs; `noout`: nothing takes out what it makes; `sorter`: its sorters can't keep up; `mix`: a belt mixes products; `station`: it receives something it doesn't hold; `port`: output port without a product; `monitor`: traffic monitor not on a belt or without a product). `kind` and `items` are for programs; `msg` is the text in the editor language. `carries(i)` tells what a belt or depot carries and `supplied(i)` what reaches a machine |
+| `balance(indices)` | Balance per minute of those buildings (or the whole blueprint): `{ items: [[item, in, out]], machines, work, idle, gen, notes }`, with power in kW. See «Rates and power» |
+| `collisions()` | Colliding pairs in the current blueprint |
 
-En `list()` y `get()` cada edificio trae `i, itemId, name, kind, x, y, z, yaw` y además:
-- **cintas:** `level`, `next` (índice de la siguiente o −1) y `label`;
-- **clasificadores:** `from`, `fromSlot`, `to`, `toSlot`, `filter`, `length` y `x2, y2`;
-- **producción:** `recipe` y `recipeName`;
-- **divisores:** `model`;
-- **apilados:** `stackedOn`.
+In `list()` and `get()` each building has `i, itemId, name, kind, x, y, z, yaw` and also:
+- **belts:** `level`, `next` (index of the next one or −1) and `label`;
+- **sorters:** `from`, `fromSlot`, `to`, `toSlot`, `filter`, `length` and `x2, y2`;
+- **production:** `recipe` and `recipeName`;
+- **splitters:** `model`;
+- **stacked:** `stackedOn`.
 
-### Construir
+### Build
 
-| Método | Notas |
+| Method | Notes |
 |---|---|
-| `place(itemId, x, y, { yaw, recipe, model })` | Coloca un edificio. Si en esa casilla hay uno compatible, **se apila** encima (almacenes, tanques, laboratorios, distribuidor sobre almacén). `model` sirve para el divisor: 38 (4 lados), 39 (doble altura N-S), 40 (cruce) |
-| `belt([[x, y], ...], { tier, level })` | Traza una cinta por esos puntos. Entre puntos va en L: primero el eje más largo. `tier`: 2001, 2002 o 2003. Se engancha sola a cintas del mismo nivel en los extremos, a cintas de otro nivel en la misma casilla (subida o bajada) y a puertos de cinta. Devuelve `created` con los índices nuevos |
-| `sorter(desde, hasta, { tier, filter })` | Clasificador de 1 a 3 casillas. `desde` y `hasta` pueden ser `{ belt: i }`, `{ building: i, slot: n }` o `[x, y]`, en cuyo caso busca el hueco o la cinta más cercana. `tier`: 2011, 2012, 2013 o 2014 (apilador). El desplazamiento sobre la cinta se calcula solo |
-| `duplicate(indices, dx, dy)` | Copia esos edificios, con su receta y sus clasificadores, desplazados `dx, dy` |
+| `place(itemId, x, y, { yaw, recipe, model })` | Places a building. If there is a compatible one in that cell, it **stacks** on top (depots, tanks, labs, distributor on a depot). `model` is for the splitter: 38 (4 sides), 39 (two levels N-S), 40 (crossing) |
+| `belt([[x, y], ...], { tier, level })` | Draws a belt through those points. Between points it goes in an L: the longer axis first. `tier`: 2001, 2002 or 2003. It attaches by itself to belts at the same level at its ends, to belts at another level in the same cell (ramp up or down) and to belt ports. Returns `created` with the new indices |
+| `sorter(from, to, { tier, filter })` | Sorter of 1 to 3 cells. `from` and `to` can be `{ belt: i }`, `{ building: i, slot: n }` or `[x, y]`, in which case it looks for the nearest slot or belt. `tier`: 2011, 2012, 2013 or 2014 (pile sorter). The offset along the belt is computed automatically |
+| `duplicate(indices, dx, dy)` | Copies those buildings, with their recipe and sorters, shifted by `dx, dy` |
 
-### Cambiar
+### Change
 
-| Método | Notas |
+| Method | Notes |
 |---|---|
-| `setRecipe(indices, recipeId)` | `0` para quitarla |
-| `setFilter(indices, itemId)` | Clasificadores. `0` para quitar el filtro |
-| `setTier(indices, itemId)` | Cambia el nivel Mk.I/II/III de cintas o clasificadores |
-| `setModel(i, modelo)` | Variante del divisor |
-| `setLabel(indices, itemId)` | Icono que muestra una cinta |
-| `setProps(indices, cambios)` | Cambia propiedades (ver «Propiedades»). Solo se tocan los campos que pases |
-| `move(indices, dx, dy)` | Los clasificadores enganchados se mueven con su edificio. Las cintas no se estiran: si sueltas una cinta encima de otra del mismo nivel, la sustituye |
-| `rotate(indices, veces)` | 90° en sentido horario por vez, alrededor del centro del grupo |
-| `remove(indices)` · `removeBeltLine(i)` | Borrar. `removeBeltLine` borra toda la cinta conectada del mismo tipo |
-| `clean()` | Borra los clasificadores sueltos (sin inicio o sin fin) |
-| `setInfo({ name, desc })` | Nombre y descripción del blueprint |
+| `setRecipe(indices, recipeId)` | `0` removes it |
+| `setFilter(indices, itemId)` | Sorters. `0` removes the filter |
+| `setTier(indices, itemId)` | Changes the Mk.I/II/III tier of belts or sorters |
+| `setModel(i, model)` | Splitter variant |
+| `setLabel(indices, itemId)` | Icon shown on a belt |
+| `setProps(indices, changes)` | Changes properties (see «Properties»). Only the fields you pass are touched |
+| `move(indices, dx, dy)` | Attached sorters move with their building. Belts don't stretch: if you drop a belt on another one at the same level, it replaces it |
+| `rotate(indices, times)` | 90° clockwise each time, around the center of the group |
+| `remove(indices)` · `removeBeltLine(i)` | Delete. `removeBeltLine` deletes the whole connected belt of the same type |
+| `clean()` | Deletes loose sorters (without a start or an end) |
+| `setInfo({ name, desc })` | Blueprint name and description |
 
-### Archivo y editor
+### File and editor
 
-| Método | Notas |
+| Method | Notes |
 |---|---|
-| `newBlueprint(nombre)` | Blueprint vacío, sin preguntar |
-| `await load(texto)` | Abre un código `BLUEPRINT:...` |
-| `await export()` | Devuelve el código `BLUEPRINT:...` |
-| `select(indices)` · `selection()` · `fit()` · `undo()` · `redo()` | Selección, encuadre y deshacer en la vista |
+| `newBlueprint(name)` | Empty blueprint, without asking |
+| `await load(text)` | Opens a `BLUEPRINT:...` code |
+| `await export()` | Returns the `BLUEPRINT:...` code |
+| `select(indices)` · `selection()` · `fit()` · `undo()` · `redo()` | Selection, fit to view and undo in the view |
+| `setLang('en' \| 'es')` | Editor language |
 
-### Propiedades
+### Properties
 
-`props(i)` y `setProps(indices, cambios)` traducen `parameters` a campos legibles (código en `js/props.js`). En las listas puedes dar solo las posiciones que cambian, por ejemplo `{ slots: [, { local: 1 }] }` o `{ priority: [false, false, true] }`.
+`props(i)` and `setProps(indices, changes)` translate `parameters` into readable fields (code in `js/props.js`). In lists you can give only the positions that change, for example `{ slots: [, { local: 1 }] }` or `{ priority: [false, false, true] }`.
 
-| Edificio | Campos |
+| Building | Fields |
 |---|---|
-| Receptor de rayos (2208) | `mode`: `'power'` (energía) o `'photon'` (fotones críticos) |
-| Distribuidor logístico (2107) | `item` (producto), `icarus` (2 dar y recoger, 1 solo dar, 3 solo recoger, 0 no; 1 y 3 sin comprobar en el juego), `distributors` (0 no, 1 ofrecer, 2 pedir), `chargeMW`, `autoBots` |
-| Almacén Mk.I/II (2101, 2102) | `usable` (casillas que se pueden usar; el resto quedan bloqueadas), `filters` (filtro de cada casilla, 0 = libre) |
-| Estaciones (2103, 2104) | `slots`: `[{ item, local, remote, max }]` con 0 almacén, 1 ofrecer, 2 pedir (al poner un producto en una casilla vacía, el límite es 5000 en la PLS y 10000 en la ILS si no se da `max`) · `ports`: 12 puertos `{ dir, storage }` (dir 1 sale, 2 entra; storage = nº de producto 1…n que sale por ese puerto) · `chargeMW`, `droneRange` (grados), `droneMinLoad`, `vesselRangeLY` (100 = ∞), `vesselMinLoad`, `warpAU`, `warpersRequired`, `orbitalCollector`, `outgoingCount` (0 = límite de tecnología), `autoDrones`, `autoVessels` |
-| Monitor de tráfico (2030) | `mode`: `'none'`, `'generate'` o `'consume'` (sandbox del juego) · `item`: producto que genera, o que consume (0 = todo) · `cycle` (s) y `target` (objetos por ciclo) de la medida. Va encima de una cinta, sin conexión |
-| Divisor (2020) | `priority`: 4 booleanos por puerto (0 N, 1 E, 2 S, 3 O en el de 4 lados); `filter`: producto que sale por la salida con prioridad |
+| Ray Receiver (2208) | `mode`: `'power'` or `'photon'` (critical photons) |
+| Logistics Distributor (2107) | `item` (product), `icarus` (2 give and take, 1 give only, 3 take only, 0 no; 1 and 3 not checked in the game), `distributors` (0 no, 1 supply, 2 demand), `chargeMW`, `autoBots` |
+| Depot Mk.I/II (2101, 2102) | `usable` (slots that can be used; the rest are locked), `filters` (filter of each slot, 0 = free) |
+| Stations (2103, 2104) | `slots`: `[{ item, local, remote, max }]` with 0 storage, 1 supply, 2 demand (when you put a product in an empty slot, the limit is 5000 on the PLS and 10000 on the ILS unless `max` is given) · `ports`: 12 ports `{ dir, storage }` (dir 1 out, 2 in; storage = product number 1…n that goes out through that port) · `chargeMW`, `droneRange` (degrees), `droneMinLoad`, `vesselRangeLY` (100 = ∞), `vesselMinLoad`, `warpAU`, `warpersRequired`, `orbitalCollector`, `outgoingCount` (0 = tech limit), `autoDrones`, `autoVessels` |
+| Traffic Monitor (2030) | `mode`: `'none'`, `'generate'` or `'consume'` (game sandbox) · `item`: product it generates, or consumes (0 = all) · `cycle` (s) and `target` (items per cycle) of the measurement. It sits on top of a belt, without a connection |
+| Splitter (2020) | `priority`: 4 booleans, one per port (0 N, 1 E, 2 S, 3 W on the 4-sided one); `filter`: product that goes out through the priority output |
 
-### Comprobación de suministro
+### Supply check
 
-`js/flow.js` propaga qué productos hay en cada cinta: entran por **cintas con etiqueta** (se supone que traen ese producto), **puertos de salida de estaciones** (el producto elegido), **salidas de máquinas** (los productos de su receta) **almacenes** (lo que les entra y sus filtros) y **monitores de tráfico que generan** (modo sandbox). Un monitor que consume retira de su cinta lo filtrado (o todo). Siguen por cintas, divisores (con su filtro y prioridad) y clasificadores (con su filtro; hacia una máquina solo cogen lo que pide su receta). Con eso dice a qué máquinas les falta algo, qué cintas mezclan productos y si los clasificadores de cada máquina dan abasto: un clasificador mueve 1,5 (Mk.I), 3 (Mk.II), 6 (Mk.III) o 12 (apilador, sin comprobar) viajes por segundo y casilla, así que un Mk.I mueve 90/min si mide 1 casilla, 45 si mide 2 y 30 si mide 3. El editor lo muestra en el panel (✓/✗ en cada entrada de la receta, «Lleva» en las cintas, lista «Comprobación» del blueprint) y con «!» en el plano; `node tools/bp.js check` lo imprime.
+`js/flow.js` propagates which products are on each belt. They come in through **labelled belts** (assumed to carry that product), **station output ports** (the chosen product), **machine outputs** (their recipe's products), **depots** (what goes into them and their filters) and **generating traffic monitors** (sandbox mode). A consuming monitor removes from its belt the filtered product (or everything). Products travel along belts, splitters (with their filter and priority) and sorters (with their filter; towards a machine they only take what its recipe needs). With that it tells which machines lack something, which belts mix products and whether each machine's sorters can keep up: a sorter makes 1.5 (Mk.I), 3 (Mk.II), 6 (Mk.III) or 12 (pile sorter, unchecked) trips per second and cell, so a Mk.I moves 90/min if it is 1 cell long, 45 if 2 and 30 if 3. The editor shows it in the panel (✓/✗ on each recipe input, «Carries» on belts, the blueprint's «Supply check» list) and with «!» on the map; `node tools/bp.js check` prints it.
 
-### Simulación de flujo
+### Flow simulation
 
-`DSP.simulate({ openEnds })` (y `node tools/bp.js sim BP.txt [--open]`) calcula el régimen estable con `js/sim.js`: cuánto pasa por cada cinta y clasificador y a qué porcentaje trabaja cada máquina. Devuelve `machines` (`{ r, rIn, rOut, limit, need, prod, got }`; `r` de 0 a 1 y `limit.kind`: `input` le falta, `sorter` sus clasificadores no dan abasto, `output` no le sacan lo que fabrica), `belts`, `sorters` (objetos/min), `sources` y `sinks` (lo que entra y sale del blueprint), `jams` (cintas con mezcla que se atascan), `iterations` y `converged`.
+`DSP.simulate({ openEnds })` (and `node tools/bp.js sim BP.txt [--open]`) computes the steady state with `js/sim.js`: how much passes along each belt and sorter and at what percentage each machine works. It returns `machines` (`{ r, rIn, rOut, limit, need, prod, got }`; `r` from 0 to 1 and `limit.kind`: `input` something is missing, `sorter` its sorters can't keep up, `output` nothing takes out what it makes), `belts`, `sorters` (items/min), `sources` and `sinks` (what goes in and out of the blueprint), `jams` (mixed belts that jam), `iterations` and `converged`.
 
-- **Cintas:** Mk.I 360/min, Mk.II 720, Mk.III 1800. Cada casilla es un paso, así que los clasificadores de más arriba cogen primero; lo que llega por detrás tiene prioridad sobre lo que entra por un lado.
-- **Entradas:** puertos de salida de estaciones (cinta llena del producto elegido), monitores que generan y cintas con etiqueta cuando antes no entra nada y después ninguna máquina deja ese producto (una etiqueta en una cinta de salida no inventa producto).
-- **Salidas:** monitores que consumen, puertos de entrada de estaciones y almacenes sin clasificadores de salida. Sin salidas, las cintas se llenan y todo se para, como en el juego; `openEnds` hace que el final de las cintas sin salida retire lo que llega.
-- **Contrapresión:** solo entra lo que se consume. Cada máquina va a la velocidad de su entrada más escasa y de lo que le pueden sacar.
-- Sin proliferador ni apilado en la cinta; el fraccionador es aproximado.
+- **Belts:** Mk.I 360/min, Mk.II 720, Mk.III 1800. Each cell is a step, so sorters further upstream take first; what comes from behind has priority over what enters from a side.
+- **Inputs:** station output ports (a full belt of the chosen product), generating monitors, and labelled belts when nothing comes in before and no machine further on outputs that product (a label on an output belt doesn't create product).
+- **Outputs:** consuming monitors, station input ports and depots without output sorters. Without outputs, belts fill up and everything stops, as in the game; `openEnds` makes the end of belts with no exit remove what reaches them.
+- **Back pressure:** only what is consumed comes in. Each machine runs at the speed of its scarcest input and of what can be taken out of it.
+- No proliferator and no stacking on the belt; the fractionator is approximate.
 
-### Ritmos y potencia
+### Rates and power
 
-`get(i)` trae además, en las máquinas con receta, `rates`: `{ speed, base, cycle, in, out }` (tiempo de la receta, multiplicador de velocidad del edificio, segundos por ciclo y objetos por minuto), y en los edificios que gastan o generan electricidad, `power`: `{ work, idle }` en kW (negativo = genera). En estaciones y distribuidor, `work` es su potencia de carga configurada.
+`get(i)` also includes, for machines with a recipe, `rates`: `{ speed, base, cycle, in, out }` (recipe time, building speed multiplier, seconds per cycle and items per minute), and for buildings that use or generate electricity, `power`: `{ work, idle }` in kW (negative = generates). On stations and distributor, `work` is their configured charging power.
 
-Los cálculos (`js/rates.js`) suponen las máquinas trabajando sin parar y sin proliferador; los fraccionadores no entran porque su ritmo depende de la cinta. Datos: tiempos y cantidades de las recetas en `js/recipes.js` (`time`, `in`, `out`), velocidad y consumo de cada edificio en `js/machines.js` (de [factoriolab](https://github.com/factoriolab/factoriolab), `node tools/gen_machines.js`). Ejemplo: la ensambladora Mk.I tiene `speed: 0.75`, así que un engranaje (1 s) tarda 1,33 s y hace 45/min.
+The calculations (`js/rates.js`) assume machines working non-stop with no proliferator; fractionators are left out because their rate depends on the belt. Data: recipe times and amounts in `js/recipes.js` (`time`, `in`, `out`), speed and power of each building in `js/machines.js` (from [factoriolab](https://github.com/factoriolab/factoriolab), `node tools/gen_machines.js`). Example: the Assembling Machine Mk.I has `speed: 0.75`, so a gear (1 s) takes 1.33 s and makes 45/min.
 
-### Reglas que aplica (igual que el editor)
+### Rules it applies (same as the editor)
 
-- **Choques.** No se puede colocar nada que choque.
-  - Las cintas no chocan entre sí si van a distinto nivel.
-  - Una cinta solo atraviesa un edificio por sus carriles: puertos de estaciones e intercambiador, fila de munición de las torretas, carriles del pulverizador (producto a nivel 0 por el centro, proliferador a nivel 1).
-  - Dos ensambladoras necesitan una casilla libre entre ellas; ahí cabe una Tesla.
-- **Huecos de clasificador.** Horno y ensambladora tienen 6 (0, 1, 2 al norte y 6, 7, 8 al sur). Consúltalos siempre con `slots(i)`.
-- **Recetas.** Cada edificio solo admite las de su grupo: hornos, ensambladoras, refinería, planta química, colisionador, fraccionador o laboratorio. Consúltalas con `recipes(itemId)`.
+- **Collisions.** Nothing that collides can be placed.
+  - Belts don't collide with each other if they are at different levels.
+  - A belt only goes through a building along its lanes: station and energy exchanger ports, the turrets' ammo row, the spray coater lanes (product at level 0 along the center, proliferator at level 1).
+  - Two assembling machines need a free cell between them; a Tesla tower fits there.
+- **Sorter slots.** Smelter and assembler have 6 (0, 1, 2 on the north side and 6, 7, 8 on the south). Always query them with `slots(i)`.
+- **Recipes.** Each building only accepts those of its group: smelters, assemblers, refinery, chemical plant, collider, fractionator or lab. Query them with `recipes(itemId)`.
 
-### Edificios más usados
+### Most used buildings
 
-| itemId | Edificio | itemId | Edificio |
+| itemId | Building | itemId | Building |
 |---|---|---|---|
 | 2001–2003 | Conveyor Belt Mk.I–III | 2011–2014 | Sorter Mk.I–III, Pile Sorter |
 | 2020 | Splitter | 2101, 2102 | Depot Mk.I, Mk.II |
@@ -144,30 +148,32 @@ Los cálculos (`js/rates.js`) suponen las máquinas trabajando sin parar y sin p
 | 2313 | Spray Coater | 2314 | Fractionator |
 | 2901 | Matrix Lab | | |
 
-La lista completa está en `DSP.catalog()`.
+The full list is in `DSP.catalog()`.
 
 ---
 
-## 2. `tools/bp.js` (línea de comandos)
+## 2. `tools/bp.js` (command line)
 
 ```bash
 node tools/bp.js decode BP.txt  bp.json     # blueprint → JSON
-node tools/bp.js encode bp.json BP.txt      # JSON → blueprint (hash recalculado)
-node tools/bp.js check  BP.txt              # hash, choques, clasificadores sueltos (código de salida 2 si hay problemas) y suministro
-node tools/bp.js info   BP.txt              # resumen por tipo de edificio, balance por minuto y potencia
-node tools/bp.js sim    BP.txt [--open]     # simulación de flujo: máquinas por debajo del 100 %, entradas y salidas
+node tools/bp.js encode bp.json BP.txt      # JSON → blueprint (hash recalculated)
+node tools/bp.js check  BP.txt              # hash, collisions, loose sorters (exit code 2 if there are problems) and supply
+node tools/bp.js info   BP.txt              # count per building type, balance per minute and power
+node tools/bp.js sim    BP.txt [--open]     # flow simulation: machines below 100 %, inputs and outputs
 ```
 
-El JSON es el blueprint completo. Cada edificio lleva `_name` y, si tiene, `_props` (propiedades legibles, ver «Propiedades»); los dos son solo informativos y se ignoran al codificar. Para cambiar propiedades sin tocar `parameters`, añade a un edificio `"props": { ... }` con los campos que cambian: se aplican al codificar. Campos principales de cada edificio:
+Output is in English; with the environment variable `DSPBP_LANG=es`, item names and supply messages come out in Spanish.
 
-| Campo | Significado |
+The JSON is the full blueprint. Each building carries `_name` and, if it has them, `_props` (readable properties, see «Properties»); both are informative only and ignored when encoding. To change properties without touching `parameters`, add `"props": { ... }` to a building with the fields that change: they are applied when encoding. Main fields of each building:
+
+| Field | Meaning |
 |---|---|
-| `itemId`, `modelIndex` | Tipo de edificio y modelo 3D. Copia el `modelIndex` de otro edificio igual (o de `js/templates.js`) |
-| `x, y, z, yaw` | Posición y giro. Los clasificadores tienen además `x2, y2, z2, yaw2`: el extremo final |
-| `outputObjIdx`, `inputObjIdx` | Índices de los edificios conectados (−1 si no hay) |
-| `outputToSlot`, `inputFromSlot` | Hueco o puerto del edificio conectado. En las cintas, `outputToSlot` es 1 al enlazar con otra cinta |
-| `outputOffset`, `inputOffset` | Desplazamiento del clasificador sobre la cinta: `floor(20 × distancia en el sentido de avance)` |
-| `recipeId`, `filterId` | Receta (producción) y filtro (clasificadores) |
-| `parameters` | Clasificador: `[longitud]`. Cinta: `[icono, 0]` o `[]`. Almacenes y estaciones: su configuración |
+| `itemId`, `modelIndex` | Building type and 3D model. Copy the `modelIndex` from another building of the same type (or from `js/templates.js`) |
+| `x, y, z, yaw` | Position and rotation. Sorters also have `x2, y2, z2, yaw2`: the far end |
+| `outputObjIdx`, `inputObjIdx` | Indices of the connected buildings (−1 if none) |
+| `outputToSlot`, `inputFromSlot` | Slot or port of the connected building. On belts, `outputToSlot` is 1 when linking to another belt |
+| `outputOffset`, `inputOffset` | Offset of the sorter along the belt: `floor(20 × distance in the direction of travel)` |
+| `recipeId`, `filterId` | Recipe (production) and filter (sorters) |
+| `parameters` | Sorter: `[length]`. Belt: `[icon, 0]` or `[]`. Depots and stations: their configuration |
 
-Si borras o reordenas edificios en el JSON, ajusta los índices de conexión (o pon −1). Después pasa `check` para comprobar que no hay choques ni clasificadores sueltos.
+If you delete or reorder buildings in the JSON, fix the connection indices (or set −1). Then run `check` to make sure there are no collisions or loose sorters.

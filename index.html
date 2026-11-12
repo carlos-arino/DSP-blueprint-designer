@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,54 +10,55 @@
 <header id="topbar">
   <div class="brand">DSP Blueprint Designer</div>
   <div class="group">
-    <button id="btnNew" title="Nuevo blueprint">Nuevo</button>
-    <button id="btnOpenFile" title="Abrir un archivo .txt">Abrir…</button>
-    <button id="btnOpenDir" title="Abrir la carpeta de blueprints del juego">Abrir carpeta</button>
-    <button id="btnPaste" title="Pegar un código BLUEPRINT:…">Pegar código</button>
+    <button id="btnNew" data-i18n="top.new" data-i18n-title="top.new.tip">New</button>
+    <button id="btnOpenFile" data-i18n="top.open" data-i18n-title="top.open.tip">Open…</button>
+    <button id="btnOpenDir" data-i18n="top.openDir" data-i18n-title="top.openDir.tip">Open folder</button>
+    <button id="btnPaste" data-i18n="top.paste" data-i18n-title="top.paste.tip">Paste code</button>
   </div>
   <div class="group">
-    <button id="btnUndo" title="Deshacer (Ctrl+Z)">↶</button>
-    <button id="btnRedo" title="Rehacer (Ctrl+Y)">↷</button>
+    <button id="btnUndo" data-i18n-title="top.undo.tip">↶</button>
+    <button id="btnRedo" data-i18n-title="top.redo.tip">↷</button>
   </div>
   <div class="group">
-    <button id="btnCopy" class="primary" title="Copiar el código al portapapeles para pegarlo en el juego">Copiar código</button>
-    <button id="btnSave" title="Guardar (Ctrl+S)">Guardar</button>
-    <button id="btnSaveAs" title="Guardar con otro nombre">Guardar como…</button>
-    <button id="btnDownload" title="Descargar como .txt">Descargar</button>
+    <button id="btnCopy" class="primary" data-i18n="top.copy" data-i18n-title="top.copy.tip">Copy code</button>
+    <button id="btnSave" data-i18n="top.save" data-i18n-title="top.save.tip">Save</button>
+    <button id="btnSaveAs" data-i18n="top.saveAs" data-i18n-title="top.saveAs.tip">Save as…</button>
+    <button id="btnDownload" data-i18n="top.download" data-i18n-title="top.download.tip">Download</button>
   </div>
   <div id="docTitle" class="doc-title"></div>
+  <select id="langSel" data-i18n-title="lang.title"><option value="en">English</option><option value="es">Español</option></select>
 </header>
 
 <main>
   <aside id="left">
     <section id="librarySection" class="panel">
-      <h3>Biblioteca <span id="libPath" class="muted"></span></h3>
-      <div id="library" class="list"><p class="muted small">Abre la carpeta de blueprints del juego (Documentos\Dyson Sphere Program\Blueprint) para verlos aquí.</p></div>
+      <h3><span data-i18n="lib.title">Library</span> <span id="libPath" class="muted"></span></h3>
+      <div id="library" class="list"><p class="muted small" data-i18n="lib.hint"></p></div>
     </section>
     <section class="panel grow">
-      <h3>Edificios</h3>
-      <input id="paletteSearch" type="search" placeholder="Buscar…">
+      <h3 data-i18n="pal.title">Buildings</h3>
+      <input id="paletteSearch" type="search" data-i18n-placeholder="pal.search">
       <div id="palette" class="list"></div>
     </section>
   </aside>
 
   <section id="center">
     <div id="toolbar">
-      <button data-tool="select" class="tool active" title="Seleccionar / mover (V)">⬚ Seleccionar</button>
-      <button id="btnRotate" title="Girar selección 90° (R)">⟳ Girar</button>
-      <button id="btnDup" title="Duplicar (Ctrl+D)">⧉ Duplicar</button>
-      <button id="btnDelete" title="Borrar (Supr)">🗑 Borrar</button>
-      <button id="btnFit" title="Encuadrar (F)">⤢ Encuadrar</button>
-      <button id="btnCleanSorters" title="Borrar los clasificadores a los que les falta el inicio o el fin">🧹 Limpiar</button>
-      <label class="chk" title="Nivel de altura: las cintas nuevas se ponen a este nivel y el resto se atenúa (RePág/AvPág)">Altura
-        <select id="levelSel"><option value="all">todas</option><option value="0">0 suelo</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
-      <label class="chk"><input type="checkbox" id="chkLabels" checked> Etiquetas</label>
-      <label class="chk"><input type="checkbox" id="chkLinks"> Conexiones</label>
+      <button data-tool="select" class="tool active" data-i18n="tb.select" data-i18n-title="tb.select.tip">⬚ Select</button>
+      <button id="btnRotate" data-i18n="tb.rotate" data-i18n-title="tb.rotate.tip">⟳ Rotate</button>
+      <button id="btnDup" data-i18n="tb.dup" data-i18n-title="tb.dup.tip">⧉ Duplicate</button>
+      <button id="btnDelete" data-i18n="tb.delete" data-i18n-title="tb.delete.tip">🗑 Delete</button>
+      <button id="btnFit" data-i18n="tb.fit" data-i18n-title="tb.fit.tip">⤢ Fit</button>
+      <button id="btnCleanSorters" data-i18n="tb.clean" data-i18n-title="tb.clean.tip">🧹 Clean up</button>
+      <label class="chk" data-i18n-title="tb.level.tip"><span data-i18n="tb.level">Level</span>
+        <select id="levelSel"><option value="all" data-i18n="tb.level.all">all</option><option value="0" data-i18n="tb.level.ground">0 ground</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
+      <label class="chk"><input type="checkbox" id="chkLabels" checked> <span data-i18n="tb.labels">Labels</span></label>
+      <label class="chk"><input type="checkbox" id="chkLinks"> <span data-i18n="tb.links">Connections</span></label>
       <span id="toolHint" class="muted small"></span>
     </div>
     <div id="canvasWrap">
       <canvas id="canvas"></canvas>
-      <div id="dropHint" class="hidden">Suelta aquí un archivo de blueprint</div>
+      <div id="dropHint" class="hidden" data-i18n="drop.hint">Drop a blueprint file here</div>
     </div>
     <footer id="status"><span id="stCursor"></span><span id="stInfo"></span><span id="stMsg"></span></footer>
   </section>
@@ -69,21 +70,21 @@
 
 <dialog id="dlgPaste">
   <form method="dialog">
-    <h3>Pegar código de blueprint</h3>
+    <h3 data-i18n="dlg.paste.title">Paste blueprint code</h3>
     <textarea id="pasteText" rows="10" placeholder='BLUEPRINT:0,10,...'></textarea>
     <div class="row end">
-      <button value="cancel">Cancelar</button>
-      <button id="btnPasteOk" value="ok" class="primary">Abrir</button>
+      <button value="cancel" data-i18n="dlg.cancel">Cancel</button>
+      <button id="btnPasteOk" value="ok" class="primary" data-i18n="dlg.open">Open</button>
     </div>
   </form>
 </dialog>
 
 <dialog id="dlgCode">
   <form method="dialog">
-    <h3>Código del blueprint</h3>
-    <p class="muted small">Copia este texto y pégalo en el juego (modo planos → pegar).</p>
+    <h3 data-i18n="dlg.code.title">Blueprint code</h3>
+    <p class="muted small" data-i18n="dlg.code.hint"></p>
     <textarea id="codeText" rows="10" readonly></textarea>
-    <div class="row end"><button value="ok" class="primary">Cerrar</button></div>
+    <div class="row end"><button value="ok" class="primary" data-i18n="dlg.close">Close</button></div>
   </form>
 </dialog>
 
@@ -92,6 +93,7 @@
 
 <div id="toast"></div>
 
+<script src="js/i18n.js"></script>
 <script src="js/codec.js"></script>
 <script src="js/recipes.js"></script>
 <script src="js/items.js"></script>

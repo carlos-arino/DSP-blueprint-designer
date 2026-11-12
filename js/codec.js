@@ -262,17 +262,18 @@
 
   // ---------------------------------------------------------------- texto completo
   const PREFIX = 'BLUEPRINT:';
+  const tr = (k, fb) => (root.DSPI18n ? root.DSPI18n.t(k) : fb);
 
   async function parse(text) {
     text = text.trim();
-    if (!text.startsWith(PREFIX)) throw new Error('El texto no empieza por BLUEPRINT:');
+    if (!text.startsWith(PREFIX)) throw new Error(tr('codec.prefix', 'The text does not start with BLUEPRINT:'));
     const q1 = text.indexOf('"');
     const q2 = text.lastIndexOf('"');
-    if (q1 < 0 || q2 <= q1) throw new Error('Formato incorrecto: faltan las comillas');
+    if (q1 < 0 || q2 <= q1) throw new Error(tr('codec.quotes', 'Wrong format: the quotes are missing'));
     const hash = text.substring(q2 + 1);
     const computed = md5f(strToLatin1(text.substring(0, q2)));
     const cells = text.substring(PREFIX.length, q1).split(',');
-    if (cells.length < 12) throw new Error('Cabecera incompleta');
+    if (cells.length < 12) throw new Error(tr('codec.header', 'Incomplete header'));
     const raw = await gunzip(b64decode(text.substring(q1 + 1, q2)));
     const bp = decodeBinary(raw);
     bp.header = {

@@ -5,7 +5,7 @@
 //     items:    Map(índice → Set de objetos) en cintas, almacenes y estaciones
 //     supplied: Map(índice de máquina → Set de objetos que le llegan)
 //     moves:    Map(índice de clasificador → Set de objetos que mueve)
-//     issues:   [{ level: 'error' | 'warn', kind, i, msg, items }]
+//     issues:   [{ level: 'error' | 'warn', kind, i, msg, items }]   (msg en el idioma de js/i18n.js)
 //   }
 //
 // Fuentes de productos: cintas con etiqueta (se supone que traen ese producto), puertos de salida de
@@ -14,7 +14,8 @@
 // lo que le llega queda en sinks.
 (function (root) {
   const IT = root.DSPItems, R = root.DSPRecipes || {}, P = root.DSPProps, RT = root.DSPRates;
-  const fmt = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
+  const L = root.DSPI18n, t = (k, v) => (L ? L.t(k, v) : k);
+  const fmt = (v) => (L ? L.num(Math.round(v * 10) / 10) : String(Math.round(v * 10) / 10));
   const isBelt = (b) => b && b.itemId >= 2001 && b.itemId <= 2003;
   const isSorter = (b) => b && b.itemId >= 2011 && b.itemId <= 2014;
   const DEPOT = new Set([2101, 2102, 2106]);
@@ -48,10 +49,10 @@
       const p = P.read(b);
       if (p.mode === 'none') return;
       const bi = beltAtCell.get(`${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.z)}`);
-      if (bi === undefined) { issues.push({ level: 'warn', kind: 'monitor', i, msg: 'No está encima de ninguna cinta', items: [] }); return; }
+      if (bi === undefined) { issues.push({ level: 'warn', kind: 'monitor', i, msg: t('flow.monitorNoBelt'), items: [] }); return; }
       if (p.mode === 'generate') {
         if (p.item) addAll(items, bi, [p.item]);
-        else issues.push({ level: 'warn', kind: 'monitor', i, msg: 'Genera, pero no tiene producto elegido', items: [] });
+        else issues.push({ level: 'warn', kind: 'monitor', i, msg: t('flow.monitorNoItem'), items: [] });
       } else consumers.set(bi, { i, item: p.item });
     });
     // lo que sigue por la cinta después de pasar por un monitor que consume
@@ -72,7 +73,7 @@
         for (const [slot, bi] of beltsOut.get(i) || []) {
           const st = p.ports[slot] && p.ports[slot].storage, it = st && p.slots[st - 1] ? p.slots[st - 1].item : 0;
           if (it) addAll(items, bi, [it]);
-          else issues.push({ level: 'warn', kind: 'port', i, msg: `Puerto de salida ${slot} sin producto elegido`, items: [] });
+          else issues.push({ level: 'warn', kind: 'port', i, msg: t('flow.portNoItem', { slot }), items: [] });
         }
       }
     });
@@ -126,27 +127,27 @@
       const r = recipeOf(b);
       if (r && !isBelt(b) && !isSorter(b) && !(P && P.STATION_SLOTS[b.itemId]) && b.itemId !== 2314) {
         const got = get(supplied, i), miss = r.in.map(([id]) => id).filter((id) => !got.has(id));
-        if (miss.length) issues.push({ level: 'error', kind: 'missing', i, msg: `Le falta ${names(miss)}`, items: miss });
+        if (miss.length) issues.push({ level: 'error', kind: 'missing', i, msg: t('flow.missing', { items: names(miss) }), items: miss });
         const outSorters = bs.some((s) => isSorter(s) && s.inputObjIdx === i);
-        if (!outSorters) issues.push({ level: 'warn', kind: 'noout', i, msg: 'Nadie saca lo que fabrica', items: r.out.map(([id]) => id) });
+        if (!outSorters) issues.push({ level: 'warn', kind: 'noout', i, msg: t('flow.noOut'), items: r.out.map(([id]) => id) });
         // ¿dan abasto los clasificadores? (lo que pide o fabrica la máquina por minuto contra lo que pueden mover)
         const m = RT && RT.machine(b);
         if (m) {
           const cap = (list, id) => list.filter((s) => get(moves, bs.indexOf(s)).has(id)).reduce((a, s) => a + RT.sorter(s), 0);
           const ins = bs.filter((s) => isSorter(s) && s.outputObjIdx === i), outs = bs.filter((s) => isSorter(s) && s.inputObjIdx === i);
-          const slow = (rows, list, word) => rows.forEach(([id, need]) => {
+          const slow = (rows, list, key) => rows.forEach(([id, need]) => {
             const c = cap(list, id);
             if (c > 0 && c + 1e-6 < need) issues.push({ level: 'warn', kind: 'sorter', i, items: [id],
-              msg: `Los clasificadores ${word} ${name(id)} mueven ${fmt(c)}/min y hacen falta ${fmt(need)}/min (la máquina va al ${Math.floor(c / need * 100)} %)` });
+              msg: t(key, { item: name(id), cap: fmt(c), need: fmt(need), pct: Math.floor(c / need * 100) }) });
           });
-          slow(m.in, ins, 'que le traen');
-          if (outSorters) slow(m.out, outs, 'que sacan');
+          slow(m.in, ins, 'flow.sorterIn');
+          if (outSorters) slow(m.out, outs, 'flow.sorterOut');
         }
       }
       if (P && P.STATION_SLOTS[b.itemId]) {
         const p = P.read(b), have = new Set(p.slots.map((s) => s.item).filter(Boolean));
         const bad = [...get(supplied, i)].filter((x) => !have.has(x));
-        if (bad.length) issues.push({ level: 'error', kind: 'station', i, msg: `Le entra ${names(bad)}, que no tiene en ninguna casilla`, items: bad });
+        if (bad.length) issues.push({ level: 'error', kind: 'station', i, msg: t('flow.station', { items: names(bad) }), items: bad });
       }
     });
     // mezclas: una entrada por línea de cinta (la primera cinta de la línea donde aparece la mezcla)
@@ -160,7 +161,7 @@
       if (prev || seen.has(key + ':' + (b.outputObjIdx))) return;
       seen.add(key + ':' + b.outputObjIdx);
       const label = b.parameters && b.parameters[0];
-      issues.push({ level: 'warn', kind: 'mix', i, msg: `Mezcla ${names(s)}${label ? ` (etiqueta: ${name(label)})` : ''}`, items: [...s] });
+      issues.push({ level: 'warn', kind: 'mix', i, msg: t('flow.mix', { items: names(s), label: label ? t('flow.mixLabel', { name: name(label) }) : '' }), items: [...s] });
     });
     return { items, supplied, sinks, moves, issues };
   }
