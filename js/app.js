@@ -6,6 +6,7 @@
   const PR = window.DSPProps;   // propiedades de edificios (js/props.js)
   const RT = window.DSPRates;   // ritmos de producción y potencia (js/rates.js)
   const FL = window.DSPFlow;    // qué productos llegan a cada sitio (js/flow.js)
+  const SM = window.DSPSim;     // simulación de flujo en régimen estable (js/sim.js)
   const $ = (id) => document.getElementById(id);
 
   // Colores por nivel, iguales para cintas y clasificadores (Mk.I amarillo, Mk.II verde, Mk.III azul)
@@ -26,6 +27,7 @@
     mouse: { sx: 0, sy: 0, wx: 0, wy: 0, inside: false }, drag: null, space: false,
     templates: {}, showLabels: true, showLinks: false,
     showChecks: (() => { try { return localStorage.getItem('dspShowChecks') !== '0'; } catch (e) { return true; } })(),
+    openEnds: (() => { try { return localStorage.getItem('dspOpenEnds') === '1'; } catch (e) { return false; } })(),
     level: 'all', splitModel: 39, beltFlip: false,
   };
 
@@ -74,11 +76,13 @@
   function pushUndo() {
     S.undo.push(snapshot());
     if (S.undo.length > 150) S.undo.shift();
+    S.edits = (S.edits || 0) + 1;   // contador de cambios (la simulación se recalcula si cambia)
     S.redo = [];
     setDirty(true);
   }
   function restore(snap) {
     S.bp = JSON.parse(snap);
+    S.edits = (S.edits || 0) + 1;
     S.sel.clear();
     setDirty(true);
     refresh();
@@ -806,6 +810,24 @@
 
   function order(b) { return isSorter(b) ? 2 : isBelt(b) ? 1 : 0; }
 
+  // Simulación: porcentaje de las máquinas que no van al 100 % (abajo a la izquierda)
+  function drawSimMarks(list, offsetOf) {
+    const s = S.view.scale;
+    if (!S.sim || s < 6) return;
+    const bs = S.bp.buildings;
+    for (const b of list) {
+      const m = S.sim.machines.get(bs.indexOf(b));
+      if (!m || m.r > 0.995) continue;
+      const [ox, oy] = offsetOf(b), fp = footprint(b), pct = Math.floor(m.r * 100) + '%';
+      const [x, y] = w2s(b.x - fp.w / 2 + 0.15 + ox, b.y - fp.h / 2 + 0.15 + oy), fs = Math.max(9, Math.min(s * 0.4, 14));
+      ctx.font = `bold ${fs}px Segoe UI`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      const w = ctx.measureText(pct).width + 6;
+      ctx.fillStyle = m.r < 0.01 ? '#e05555' : '#f0a030';
+      roundRect(x, y - fs * 1.25, w, fs * 1.25, 3); ctx.fill();
+      ctx.fillStyle = '#0f1218'; ctx.fillText(pct, x + 3, y - 1);
+    }
+  }
+
   // Avisos de la comprobación: «!» rojo (le falta algo) o naranja (mezcla, sin salida…) en la esquina noroeste
   function drawFlowMarks(list, offsetOf) {
     const s = S.view.scale, marks = S.flowMarks;
@@ -902,7 +924,7 @@
     drawList(visible.filter((b) => order(b) === 0 && b.z > 0.5));
     drawList(visible.filter(isSorter));
     if (S.showLabels) drawOutputIcons(visible, offsetOf);
-    if (S.showChecks) drawFlowMarks(visible, offsetOf);
+    if (S.showChecks) { drawFlowMarks(visible, offsetOf); drawSimMarks(visible, offsetOf); }
 
     // choques: los del blueprint (salvo lo que se está moviendo) y los de los fantasmas
     if (moving && (moving.dx || moving.dy)) {
@@ -1999,8 +2021,13 @@
 
   // ------------------------------------------------------------------ inspector
   // Comprobación de suministro: se recalcula en cada cambio (unos milisegundos)
+  // Se recalculan solo si cambia el blueprint (S.edits cuenta los cambios) o la opción de la simulación
   function updateFlow() {
+    const k = S.bp ? [S.edits || 0, S.bp.buildings.length, S.openEnds].join(':') : '';
+    if (S.bp && S.flowBp === S.bp && S.flowKey === k) return;
+    S.flowBp = S.bp; S.flowKey = k;
     S.flow = S.bp ? FL.analyze(S.bp.buildings) : null;
+    S.sim = S.bp ? SM.run(S.bp.buildings, { openEnds: S.openEnds }) : null;
     S.flowMarks = new Map();
     if (S.flow) for (const x of S.flow.issues) if (x.level === 'error' || !S.flowMarks.has(x.i)) S.flowMarks.set(x.i, x.level);
   }
@@ -2068,7 +2095,8 @@
       ${field('Hash', S.bp.hashOk ? '<span class="badge ok">válido</span>' : '<span class="badge bad">no coincidía</span>')}
       ${field('Tamaño', `<span class="muted">${S.bp.areas[0] ? S.bp.areas[0].size.x + ' × ' + S.bp.areas[0].size.y : '—'} (${S.bp.areas.length} área${S.bp.areas.length > 1 ? 's' : ''})</span>`)}
       ${checksHTML()}
-      ${totalsHTML(S.bp.buildings, 'del blueprint')}
+      ${simHTML()}
+      ${totalsHTML(S.bp.buildings, 'teórico (todas al 100 %)')}
       <hr class="sep">
       <h3>Edificios (${S.bp.buildings.length})</h3>
       <p class="muted small">Clic en un tipo para seleccionarlos todos.</p>
@@ -2141,7 +2169,7 @@
       html += `<h4>Tipo</h4>${chips(BELT_TIERS, (id) => id === b.itemId, 'tier')}
         <p class="muted small">Esta cinta. <span class="link" data-act="lineSel">Seleccionar la línea (${line.size})</span> para cambiarla entera.</p>
         <h4>Icono en la cinta</h4>${itemButton('pickLabel', b.parameters[0] || 0, 'Sin icono')}
-        ${carriesHTML(idx)}
+        ${carriesHTML(idx)}${simBeltHTML(b, idx)}
         <h4>Recorrido</h4>
         ${field('Viene de', bs.some((x) => isBelt(x) && bs[x.outputObjIdx] === b) ? 'otra cinta' : (b.inputObjIdx >= 0 ? endLabel(b.inputObjIdx, b.inputFromSlot) : '<span class="muted">inicio</span>'))}
         ${field('Va a', b.outputObjIdx >= 0 ? endLabel(b.outputObjIdx, b.outputToSlot) : '<span class="muted">final</span>')}`;
@@ -2160,14 +2188,15 @@
         ${field('Hasta', endLabel(b.outputObjIdx, b.outputToSlot))}
         ${field('Longitud', `${len} casilla${len > 1 ? 's' : ''}`)}
         ${field('Capacidad', `<b>${fmtRate(RT.sorter(b))}/min</b> <span class="muted small">(${String(RT.SORTER_SPEED[b.itemId] || 0).replace('.', ',')} viajes/s por casilla ÷ ${len})</span>`)}
-        ${(() => { const mv = S.flow && S.flow.moves.get(idx); return mv && mv.size ? field('Mueve', [...mv].map((id) => `<span class="carry" title="${esc(IT.itemName(id))}">${itemIcon(id, 20)}<span>${esc(IT.itemName(id))}</span></span>`).join(' ')) : ''; })()}`;
+        ${simSorterHTML(b, idx)}
+        ${(() => { const mv = S.flow && S.flow.moves.get(idx); return mv && mv.size ? field('Puede llevar', [...mv].map((id) => `<span class="carry" title="${esc(IT.itemName(id))}">${itemIcon(id, 20)}<span>${esc(IT.itemName(id))}</span></span>`).join(' ')) : ''; })()}`;
     } else {
       const g = IT.RECIPE_GROUP[b.itemId];
       const below = b.inputObjIdx >= 0 && bs[b.inputObjIdx] && !isBelt(bs[b.inputObjIdx]) && !isSorter(bs[b.inputObjIdx]) &&
         Math.abs(bs[b.inputObjIdx].x - b.x) < 0.3 && Math.abs(bs[b.inputObjIdx].y - b.y) < 0.3 ? bs[b.inputObjIdx] : null;
       html += inspHead(b, `#${idx}${b.z > 0.5 ? ` · altura ${r2(b.z)}` : ''}`);
       html += issuesOf(idx);
-      if (g || b.recipeId) html += `<h4>Receta <span class="muted small">(E)</span></h4><div class="wide">${recipeButton(b.recipeId)}</div>${rateHTML(b)}`;
+      if (g || b.recipeId) html += `<h4>Receta <span class="muted small">(E)</span></h4><div class="wide">${recipeButton(b.recipeId)}</div>${rateHTML(b)}${simMachineHTML(idx)}`;
       html += powerHTML(b);
       if (b.itemId === 2020 && SPLIT[b.modelIndex]) {
         html += `<h4>Variante <span class="muted small">(Tab)</span></h4><div class="chips col">${Object.entries(SPLIT).map(([m, v]) =>
@@ -2273,6 +2302,59 @@
     const s = S.flow && S.flow.items.get(i);
     const list = s && s.size ? [...s].map((id) => `<span class="carry" title="${esc(IT.itemName(id))}">${itemIcon(id, 22)}<span>${esc(IT.itemName(id))}</span></span>`).join('') : '<span class="muted small">Nada (sin etiqueta ni origen conocido)</span>';
     return `<h4>Lleva</h4><div class="carries">${list}</div>${issuesOf(i)}`;
+  }
+
+  // ------------------------------------------------------------------ simulación (js/sim.js)
+  const LIMIT = { input: 'le falta', sorter: 'sus clasificadores no dan abasto con', output: 'no le sacan' };
+  const pctOf = (r) => `${Math.floor(r * 100 + 1e-6)} %`;
+  const itemList = (o) => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([id, v]) => `<div class="io"><span class="ioi">${itemIcon(+id, 20)}</span><span class="ion">${esc(IT.itemName(+id))}</span><span class="ior">${fmtRate(v)}/min</span></div>`).join('');
+  function reasonOf(m) {
+    if (m.r > 0.995) return 'a toda velocidad';
+    const l = m.limit || {};
+    return l.kind && l.kind !== 'none' ? `${LIMIT[l.kind]} ${IT.itemName(l.item)}` : 'frenada';
+  }
+  function simMachineHTML(i) {
+    const m = S.sim && S.sim.machines.get(i);
+    if (!m) return '';
+    const row = (x, a, b) => `<div class="io"><span class="ioi">${itemIcon(+x, 20)}</span><span class="ion">${esc(IT.itemName(+x))}</span><span class="muted">${fmtRate(a)} de</span><span class="ior">${fmtRate(b)}/min</span></div>`;
+    const rows = Object.keys(m.need).map((x) => row(x, m.got[x] || 0, m.need[x])).join('');
+    const outs = Object.keys(m.prod).map((x) => row(x, m.prod[x] * m.r, m.prod[x])).join('');
+    const cls = m.r > 0.995 ? 'full' : m.r < 0.01 ? 'zero' : '';
+    return `<h4>Simulación</h4>
+      <div class="simbar"><span style="width:${Math.round(m.r * 100)}%" class="${cls}"></span><b>${pctOf(m.r)}</b></div>
+      <p class="small ${m.r > 0.995 ? 'ok-text' : 'warn-text'}">${esc(reasonOf(m))}</p>
+      <div class="muted small">Recibe</div>${rows}<div class="muted small">Fabrica</div>${outs}`;
+  }
+  function simBeltHTML(b, i) {
+    const f = S.sim && S.sim.belts.get(i);
+    if (!f) return '';
+    const tot = Object.values(f).reduce((a, v) => a + v, 0), cap = SM.BELT_CAP[b.itemId];
+    return `<h4>Simulación</h4>${field('Pasa', `<b>${fmtRate(tot)}/min</b> <span class="muted small">de ${fmtRate(cap)} (${pctOf(tot / cap)})</span>`)}${itemList(f)}`;
+  }
+  function simSorterHTML(b, i) {
+    const f = S.sim && S.sim.sorters.get(i);
+    if (!f) return '';
+    const tot = Object.values(f).reduce((a, v) => a + v, 0), cap = RT.sorter(b);
+    return `${field('Mueve', `<b>${fmtRate(tot)}/min</b> <span class="muted small">de ${fmtRate(cap)} (${pctOf(tot / cap)})</span>`)}${itemList(f)}`;
+  }
+  function simHTML() {
+    if (!S.sim) return '';
+    const sm = S.sim, bs = S.bp.buildings, ms = [...sm.machines];
+    const sumUp = (map) => { const o = {}; for (const v of map.values()) for (const k in v) o[k] = (o[k] || 0) + v[k]; return o; };
+    const inn = sumUp(sm.sources), out = sumUp(sm.sinks);
+    const slow = ms.filter(([, m]) => m.r <= 0.995).sort((a, b) => a[1].r - b[1].r);
+    const full = ms.length - slow.length;
+    const rows = slow.slice(0, 40).map(([i, m]) => `<div class="issue ${m.r < 0.01 ? 'error' : 'warn'}"><span class="lv">${Math.floor(m.r * 100)}%</span><span><span class="link" data-goto="${i}">${esc(IT.buildingInfo(bs[i].itemId).name)} #${i}</span>: ${esc(reasonOf(m))}</span></div>`).join('');
+    const jams = sm.jams.slice(0, 10).map((j) => `<div class="issue warn"><span class="lv">!</span><span><span class="link" data-goto="${j.i}">Cinta #${j.i}</span>: se atasca, sobran ${fmtRate(j.rate)}/min de ${esc(IT.itemName(j.item))} que nadie recoge</span></div>`).join('');
+    const none = (t) => `<p class="muted small">${t}</p>`;
+    return `<hr class="sep"><h3>Simulación</h3>
+      <p class="muted small">Flujo estable: cintas Mk.I 360, Mk.II 720 y Mk.III 1800/min; clasificadores según su longitud; estaciones, cintas con etiqueta y monitores que generan como entrada; monitores que consumen y entradas de estación como salida.</p>
+      <label class="pcheck"><input type="checkbox" id="openEnds"${S.openEnds ? ' checked' : ''}> Las cintas sin salida retiran lo que llega (para probar sin consumidores)</label>
+      ${ms.length ? `<p class="small"><span class="ok-text">${full} de ${ms.length} máquinas al 100 %</span>${slow.length ? ` · <span class="warn-text">${slow.length} por debajo</span>` : ''}</p>${rows}` : ''}
+      ${jams}
+      ${Object.keys(inn).length ? `<div class="muted small">Entra al blueprint</div>${itemList(inn)}` : none('No entra nada: pon una cinta con etiqueta, una estación o un monitor que genere.')}
+      ${Object.keys(out).length ? `<div class="muted small">Sale del blueprint</div>${itemList(out)}` : none('No sale nada: sin consumidores (monitor que consume, estación) las cintas se llenan y la fábrica se para.')}
+      ${sm.converged ? '' : `<p class="warn-text small">La simulación no se ha estabilizado del todo (${sm.iterations} vueltas).</p>`}`;
   }
 
   // Balance de un grupo de edificios: lo que se produce y consume por minuto y la potencia
@@ -2660,6 +2742,7 @@
     if (t.id === 'hLayout') { pushUndo(); h.layout = parseInt(t.value, 10) || 10; return; }
     if (t.dataset.icon !== undefined) { pushUndo(); h.icons[+t.dataset.icon] = parseInt(t.value, 10) || 0; renderInspector(); return; }
     if (t.dataset.p) { propChange(t); return; }
+    if (t.id === 'openEnds') { S.openEnds = t.checked; try { localStorage.setItem('dspOpenEnds', t.checked ? '1' : '0'); } catch (e) { /* sin almacenamiento */ } refresh(); return; }
     if (t.id === 'showChecks') { S.showChecks = t.checked; try { localStorage.setItem('dspShowChecks', t.checked ? '1' : '0'); } catch (e) { /* sin almacenamiento */ } requestDraw(); return; }
     if (t.dataset.f) {
       const b = [...S.sel][0], f = t.dataset.f, v = parseFloat(t.value);
@@ -2815,7 +2898,7 @@
       version: 1,
       help() {
         return `DSP Blueprint Designer API (window.DSP) — ver API.md
-Consultar: info() · list({kind,itemId,near:[x,y,r],recipe}) · get(i) · catalog(texto) · recipes(itemId) · slots(i) · ports(i) · props(i) · balance([indices]) · checks() · collisions()
+Consultar: info() · list({kind,itemId,near:[x,y,r],recipe}) · get(i) · catalog(texto) · recipes(itemId) · slots(i) · ports(i) · props(i) · balance([indices]) · checks() · simulate({openEnds}) · collisions()
 Archivo:   load(texto) (async) · export() (async) · newBlueprint(nombre) · setInfo({name,desc})
 Construir: place(itemId,x,y,{yaw,recipe,model}) · belt([[x,y],...],{tier,level}) · sorter(desde,hasta,{tier,filter})
            duplicate(indices,dx,dy)
@@ -2852,6 +2935,11 @@ Editor:    select(indices) · selection() · undo() · redo() · fit()`;
         return { ...describe(b), ...(p ? { props: p } : {}), ...(m ? { rates: m } : {}), ...(w ? { power: w } : {}), raw: JSON.parse(JSON.stringify(b)) };
       },
       balance(indices) { return S.bp ? RT.totals(indices === undefined ? bsx() : arr(indices).map(get)) : null; },
+      simulate(opts) {
+        if (!S.bp) return null;
+        const r = SM.run(bsx(), opts || { openEnds: S.openEnds }), obj = (m) => Object.fromEntries([...m].map(([k, v]) => [k, v]));
+        return { machines: obj(r.machines), belts: obj(r.belts), sorters: obj(r.sorters), sources: obj(r.sources), sinks: obj(r.sinks), jams: r.jams, iterations: r.iterations, converged: r.converged };
+      },
       checks() {
         if (!S.bp) return null;
         const f = FL.analyze(bsx()), set = (m, i) => [...(m.get(i) || [])];

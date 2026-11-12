@@ -188,3 +188,11 @@ table.rates td:first-child { width: 20px; }
 .ok-text { color: var(--ok); }
 .carries { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .carry { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+
+/* Simulación */
+.simbar { position: relative; height: 16px; background: #1d2330; border-radius: 4px; overflow: hidden; margin: 4px 0; }
+.simbar span { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.simbar span.full { background: var(--ok); }
+.simbar span.zero { background: var(--danger); }
+.simbar b { position: relative; display: block; text-align: center; font-size: 11px; line-height: 16px; color: #fff; text-shadow: 0 0 3px #000; }
+.issue .lv { min-width: 12px; width: auto; }
