@@ -43,6 +43,9 @@ const code = await DSP.export()                             // texto BLUEPRINT:.
 | `slots(i)` | Huecos de clasificador del edificio: `{ slot, x, y, used }` |
 | `ports(i)` | Puertos de cinta (divisor, estaciones, intercambiador…): `{ slot, x, y, dir, level }` |
 | `props(i)` | Propiedades legibles del edificio (ver «Propiedades» más abajo), o `null` si no tiene |
+| `simulate({ openEnds })` | Simulación de flujo en régimen estable (ver «Simulación de flujo») |
+| `checks()` | Comprobación de suministro: `{ issues, carries(i), supplied(i) }`. `issues` son `{ level: 'error' \| 'warn', kind, i, msg, items }` (`missing`: a la máquina le falta algo de su receta; `noout`: nadie saca lo que fabrica; `sorter`: sus clasificadores no dan abasto; `mix`: mezcla en una cinta; `station`: le entra algo que no tiene; `port`: puerto de salida sin producto). `carries(i)` dice qué lleva una cinta o almacén y `supplied(i)` qué le llega a una máquina |
+| `balance(indices)` | Balance por minuto de esos edificios (o de todo el blueprint): `{ items: [[objeto, entra, sale]], machines, work, idle, gen, notes }`, con la potencia en kW. Ver «Ritmos y potencia» |
 | `collisions()` | Pares que chocan en el blueprint actual |
 
 En `list()` y `get()` cada edificio trae `i, itemId, name, kind, x, y, z, yaw` y además:
@@ -96,7 +99,28 @@ En `list()` y `get()` cada edificio trae `i, itemId, name, kind, x, y, z, yaw` y
 | Distribuidor logístico (2107) | `item` (producto), `icarus` (2 dar y recoger, 1 solo dar, 3 solo recoger, 0 no; 1 y 3 sin comprobar en el juego), `distributors` (0 no, 1 ofrecer, 2 pedir), `chargeMW`, `autoBots` |
 | Almacén Mk.I/II (2101, 2102) | `usable` (casillas que se pueden usar; el resto quedan bloqueadas), `filters` (filtro de cada casilla, 0 = libre) |
 | Estaciones (2103, 2104) | `slots`: `[{ item, local, remote, max }]` con 0 almacén, 1 ofrecer, 2 pedir (al poner un producto en una casilla vacía, el límite es 5000 en la PLS y 10000 en la ILS si no se da `max`) · `ports`: 12 puertos `{ dir, storage }` (dir 1 sale, 2 entra; storage = nº de producto 1…n que sale por ese puerto) · `chargeMW`, `droneRange` (grados), `droneMinLoad`, `vesselRangeLY` (100 = ∞), `vesselMinLoad`, `warpAU`, `warpersRequired`, `orbitalCollector`, `outgoingCount` (0 = límite de tecnología), `autoDrones`, `autoVessels` |
+| Monitor de tráfico (2030) | `mode`: `'none'`, `'generate'` o `'consume'` (sandbox del juego) · `item`: producto que genera, o que consume (0 = todo) · `cycle` (s) y `target` (objetos por ciclo) de la medida. Va encima de una cinta, sin conexión |
 | Divisor (2020) | `priority`: 4 booleanos por puerto (0 N, 1 E, 2 S, 3 O en el de 4 lados); `filter`: producto que sale por la salida con prioridad |
+
+### Comprobación de suministro
+
+`js/flow.js` propaga qué productos hay en cada cinta: entran por **cintas con etiqueta** (se supone que traen ese producto), **puertos de salida de estaciones** (el producto elegido), **salidas de máquinas** (los productos de su receta) **almacenes** (lo que les entra y sus filtros) y **monitores de tráfico que generan** (modo sandbox). Un monitor que consume retira de su cinta lo filtrado (o todo). Siguen por cintas, divisores (con su filtro y prioridad) y clasificadores (con su filtro; hacia una máquina solo cogen lo que pide su receta). Con eso dice a qué máquinas les falta algo, qué cintas mezclan productos y si los clasificadores de cada máquina dan abasto: un clasificador mueve 1,5 (Mk.I), 3 (Mk.II), 6 (Mk.III) o 12 (apilador, sin comprobar) viajes por segundo y casilla, así que un Mk.I mueve 90/min si mide 1 casilla, 45 si mide 2 y 30 si mide 3. El editor lo muestra en el panel (✓/✗ en cada entrada de la receta, «Lleva» en las cintas, lista «Comprobación» del blueprint) y con «!» en el plano; `node tools/bp.js check` lo imprime.
+
+### Simulación de flujo
+
+`DSP.simulate({ openEnds })` (y `node tools/bp.js sim BP.txt [--open]`) calcula el régimen estable con `js/sim.js`: cuánto pasa por cada cinta y clasificador y a qué porcentaje trabaja cada máquina. Devuelve `machines` (`{ r, rIn, rOut, limit, need, prod, got }`; `r` de 0 a 1 y `limit.kind`: `input` le falta, `sorter` sus clasificadores no dan abasto, `output` no le sacan lo que fabrica), `belts`, `sorters` (objetos/min), `sources` y `sinks` (lo que entra y sale del blueprint), `jams` (cintas con mezcla que se atascan), `iterations` y `converged`.
+
+- **Cintas:** Mk.I 360/min, Mk.II 720, Mk.III 1800. Cada casilla es un paso, así que los clasificadores de más arriba cogen primero; lo que llega por detrás tiene prioridad sobre lo que entra por un lado.
+- **Entradas:** puertos de salida de estaciones (cinta llena del producto elegido), monitores que generan y cintas con etiqueta cuando antes no entra nada y después ninguna máquina deja ese producto (una etiqueta en una cinta de salida no inventa producto).
+- **Salidas:** monitores que consumen, puertos de entrada de estaciones y almacenes sin clasificadores de salida. Sin salidas, las cintas se llenan y todo se para, como en el juego; `openEnds` hace que el final de las cintas sin salida retire lo que llega.
+- **Contrapresión:** solo entra lo que se consume. Cada máquina va a la velocidad de su entrada más escasa y de lo que le pueden sacar.
+- Sin proliferador ni apilado en la cinta; el fraccionador es aproximado.
+
+### Ritmos y potencia
+
+`get(i)` trae además, en las máquinas con receta, `rates`: `{ speed, base, cycle, in, out }` (tiempo de la receta, multiplicador de velocidad del edificio, segundos por ciclo y objetos por minuto), y en los edificios que gastan o generan electricidad, `power`: `{ work, idle }` en kW (negativo = genera). En estaciones y distribuidor, `work` es su potencia de carga configurada.
+
+Los cálculos (`js/rates.js`) suponen las máquinas trabajando sin parar y sin proliferador; los fraccionadores no entran porque su ritmo depende de la cinta. Datos: tiempos y cantidades de las recetas en `js/recipes.js` (`time`, `in`, `out`), velocidad y consumo de cada edificio en `js/machines.js` (de [factoriolab](https://github.com/factoriolab/factoriolab), `node tools/gen_machines.js`). Ejemplo: la ensambladora Mk.I tiene `speed: 0.75`, así que un engranaje (1 s) tarda 1,33 s y hace 45/min.
 
 ### Reglas que aplica (igual que el editor)
 
@@ -129,8 +153,9 @@ La lista completa está en `DSP.catalog()`.
 ```bash
 node tools/bp.js decode BP.txt  bp.json     # blueprint → JSON
 node tools/bp.js encode bp.json BP.txt      # JSON → blueprint (hash recalculado)
-node tools/bp.js check  BP.txt              # hash, choques, clasificadores sueltos (código de salida 2 si hay problemas)
-node tools/bp.js info   BP.txt              # resumen por tipo de edificio
+node tools/bp.js check  BP.txt              # hash, choques, clasificadores sueltos (código de salida 2 si hay problemas) y suministro
+node tools/bp.js info   BP.txt              # resumen por tipo de edificio, balance por minuto y potencia
+node tools/bp.js sim    BP.txt [--open]     # simulación de flujo: máquinas por debajo del 100 %, entradas y salidas
 ```
 
 El JSON es el blueprint completo. Cada edificio lleva `_name` y, si tiene, `_props` (propiedades legibles, ver «Propiedades»); los dos son solo informativos y se ignoran al codificar. Para cambiar propiedades sin tocar `parameters`, añade a un edificio `"props": { ... }` con los campos que cambian: se aplican al codificar. Campos principales de cada edificio:

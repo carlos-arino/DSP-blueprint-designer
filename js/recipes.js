@@ -1,10 +1,14 @@
-/* Recetas de DSP (tools/gen_recipes.py). id: nombre, nombre en inglés, grupo de edificio, producto (products: todos, si hay más de uno), icono. */
+/* Recetas de DSP (tools/gen_recipes.py). id: nombre, nombre en inglés, grupo de edificio, producto
+   (products: todos, si hay más de uno), icono, time (segundos a velocidad x1), in/out ([[objeto, cantidad], ...]). */
 (typeof window !== 'undefined' ? window : globalThis).DSPRecipes = {
 "1": {
 "name": "Lingote de hierro",
 "en": "Iron Ingot",
 "group": "smelt",
 "product": 1101,
+"time": 1.0,
+"in": [[1001,1]],
+"out": [[1101,1]],
 "icon": "icons/recipes/1.webp"
 },
 "2": {
@@ -12,6 +16,9 @@
 "en": "Magnet",
 "group": "smelt",
 "product": 1102,
+"time": 1.5,
+"in": [[1001,1]],
+"out": [[1102,1]],
 "icon": "icons/recipes/2.webp"
 },
 "3": {
@@ -19,6 +26,9 @@
 "en": "Copper Ingot",
 "group": "smelt",
 "product": 1104,
+"time": 1.0,
+"in": [[1002,1]],
+"out": [[1104,1]],
 "icon": "icons/recipes/3.webp"
 },
 "4": {
@@ -26,6 +36,9 @@
 "en": "Stone Brick",
 "group": "smelt",
 "product": 1108,
+"time": 1.0,
+"in": [[1005,1]],
+"out": [[1108,1]],
 "icon": "icons/recipes/4.webp"
 },
 "5": {
@@ -33,6 +46,9 @@
 "en": "Gear",
 "group": "asm",
 "product": 1201,
+"time": 1.0,
+"in": [[1101,1]],
+"out": [[1201,1]],
 "icon": "icons/recipes/5.webp"
 },
 "6": {
@@ -40,6 +56,9 @@
 "en": "Magnetic Coil",
 "group": "asm",
 "product": 1202,
+"time": 1.0,
+"in": [[1102,2],[1104,1]],
+"out": [[1202,2]],
 "icon": "icons/recipes/6.webp"
 },
 "7": {
@@ -47,6 +66,9 @@
 "en": "Wind Turbine",
 "group": "asm",
 "product": 2203,
+"time": 4.0,
+"in": [[1101,6],[1201,1],[1202,3]],
+"out": [[2203,1]],
 "icon": "icons/recipes/7.webp"
 },
 "8": {
@@ -54,6 +76,9 @@
 "en": "Tesla Tower",
 "group": "asm",
 "product": 2201,
+"time": 1.0,
+"in": [[1101,2],[1202,1]],
+"out": [[2201,1]],
 "icon": "icons/recipes/8.webp"
 },
 "9": {
@@ -61,6 +86,9 @@
 "en": "Electromagnetic Matrix",
 "group": "lab",
 "product": 6001,
+"time": 3.0,
+"in": [[1202,1],[1301,1]],
+"out": [[6001,1]],
 "icon": "icons/recipes/9.webp"
 },
 "10": {
@@ -68,6 +96,9 @@
 "en": "Matrix Lab",
 "group": "asm",
 "product": 2901,
+"time": 3.0,
+"in": [[1101,8],[1110,4],[1301,4],[1202,4]],
+"out": [[2901,1]],
 "icon": "icons/recipes/10.webp"
 },
 "11": {
@@ -75,6 +106,9 @@
 "en": "Prism",
 "group": "asm",
 "product": 1111,
+"time": 2.0,
+"in": [[1110,3]],
+"out": [[1111,2]],
 "icon": "icons/recipes/11.webp"
 },
 "12": {
@@ -82,6 +116,9 @@
 "en": "Plasma Exciter",
 "group": "asm",
 "product": 1401,
+"time": 2.0,
+"in": [[1202,4],[1111,2]],
+"out": [[1401,1]],
 "icon": "icons/recipes/12.webp"
 },
 "13": {
@@ -89,6 +126,9 @@
 "en": "Wireless Power Tower",
 "group": "asm",
 "product": 2202,
+"time": 3.0,
+"in": [[2201,1],[1401,3]],
+"out": [[2202,1]],
 "icon": "icons/recipes/13.webp"
 },
 "14": {
@@ -96,6 +136,9 @@
 "en": "Oil Extractor",
 "group": "asm",
 "product": 2307,
+"time": 8.0,
+"in": [[1103,12],[1108,12],[1301,6],[1401,4]],
+"out": [[2307,1]],
 "icon": "icons/recipes/14.webp"
 },
 "15": {
@@ -103,6 +146,9 @@
 "en": "Oil Refinery",
 "group": "asm",
 "product": 2308,
+"time": 6.0,
+"in": [[1103,10],[1108,10],[1301,6],[1401,6]],
+"out": [[2308,1]],
 "icon": "icons/recipes/15.webp"
 },
 "16": {
@@ -110,17 +156,20 @@
 "en": "Plasma Refining",
 "group": "refine",
 "product": 1120,
-"icon": "icons/recipes/16.webp",
-"products": [
-1120,
-1114
-]
+"products": [1120,1114],
+"time": 4.0,
+"in": [[1007,2]],
+"out": [[1120,1],[1114,2]],
+"icon": "icons/recipes/16.webp"
 },
 "17": {
 "name": "Grafito energético",
 "en": "Energetic Graphite",
 "group": "smelt",
 "product": 1109,
+"time": 2.0,
+"in": [[1006,2]],
+"out": [[1109,1]],
 "icon": "icons/recipes/17.webp"
 },
 "18": {
@@ -128,6 +177,9 @@
 "en": "Energy Matrix",
 "group": "lab",
 "product": 6002,
+"time": 6.0,
+"in": [[1109,2],[1120,2]],
+"out": [[6002,1]],
 "icon": "icons/recipes/18.webp"
 },
 "19": {
@@ -135,6 +187,9 @@
 "en": "Hydrogen Fuel Rod",
 "group": "asm",
 "product": 1801,
+"time": 6.0,
+"in": [[1106,1],[1120,10]],
+"out": [[1801,2]],
 "icon": "icons/recipes/19.webp"
 },
 "20": {
@@ -142,6 +197,9 @@
 "en": " - Thruster",
 "group": "asm",
 "product": 1405,
+"time": 4.0,
+"in": [[1103,2],[1104,3]],
+"out": [[1405,1]],
 "icon": "icons/recipes/20.webp"
 },
 "21": {
@@ -149,6 +207,9 @@
 "en": "Reinforced Thruster",
 "group": "asm",
 "product": 1406,
+"time": 6.0,
+"in": [[1107,5],[1204,5]],
+"out": [[1406,1]],
 "icon": "icons/recipes/21.webp"
 },
 "22": {
@@ -156,6 +217,9 @@
 "en": "Chemical Plant",
 "group": "asm",
 "product": 2309,
+"time": 5.0,
+"in": [[1103,8],[1108,8],[1110,8],[1301,2]],
+"out": [[2309,1]],
 "icon": "icons/recipes/22.webp"
 },
 "23": {
@@ -163,6 +227,9 @@
 "en": "Plastic",
 "group": "chem",
 "product": 1115,
+"time": 3.0,
+"in": [[1114,2],[1109,1]],
+"out": [[1115,1]],
 "icon": "icons/recipes/23.webp"
 },
 "24": {
@@ -170,6 +237,9 @@
 "en": "Sulfuric Acid",
 "group": "chem",
 "product": 1116,
+"time": 6.0,
+"in": [[1114,6],[1005,8],[1000,4]],
+"out": [[1116,4]],
 "icon": "icons/recipes/24.webp"
 },
 "25": {
@@ -177,6 +247,9 @@
 "en": "Organic Crystal",
 "group": "chem",
 "product": 1117,
+"time": 6.0,
+"in": [[1115,2],[1114,1],[1000,1]],
+"out": [[1117,1]],
 "icon": "icons/recipes/25.webp"
 },
 "26": {
@@ -184,6 +257,9 @@
 "en": "Titanium Crystal",
 "group": "asm",
 "product": 1118,
+"time": 4.0,
+"in": [[1117,1],[1106,3]],
+"out": [[1118,1]],
 "icon": "icons/recipes/26.webp"
 },
 "27": {
@@ -191,6 +267,9 @@
 "en": "Structure Matrix",
 "group": "lab",
 "product": 6003,
+"time": 8.0,
+"in": [[1112,1],[1118,1]],
+"out": [[6003,1]],
 "icon": "icons/recipes/27.webp"
 },
 "28": {
@@ -198,6 +277,9 @@
 "en": "Casimir Crystal",
 "group": "asm",
 "product": 1126,
+"time": 4.0,
+"in": [[1118,1],[1123,2],[1120,12]],
+"out": [[1126,1]],
 "icon": "icons/recipes/28.webp"
 },
 "29": {
@@ -205,6 +287,9 @@
 "en": "Casimir Crystal (advanced)",
 "group": "asm",
 "product": 1126,
+"time": 4.0,
+"in": [[1014,8],[1123,2],[1120,12]],
+"out": [[1126,1]],
 "icon": "icons/recipes/29.webp"
 },
 "30": {
@@ -212,6 +297,9 @@
 "en": "Titanium Glass",
 "group": "asm",
 "product": 1119,
+"time": 5.0,
+"in": [[1110,2],[1106,2],[1000,2]],
+"out": [[1119,2]],
 "icon": "icons/recipes/30.webp"
 },
 "31": {
@@ -219,6 +307,9 @@
 "en": "Graphene",
 "group": "chem",
 "product": 1123,
+"time": 3.0,
+"in": [[1109,3],[1116,1]],
+"out": [[1123,2]],
 "icon": "icons/recipes/31.webp"
 },
 "32": {
@@ -226,17 +317,20 @@
 "en": "Graphene (advanced)",
 "group": "chem",
 "product": 1123,
-"icon": "icons/recipes/32.webp",
-"products": [
-1123,
-1120
-]
+"products": [1123,1120],
+"time": 2.0,
+"in": [[1011,2]],
+"out": [[1123,2],[1120,1]],
+"icon": "icons/recipes/32.webp"
 },
 "33": {
 "name": "Nanotubo de carbono",
 "en": "Carbon Nanotube",
 "group": "chem",
 "product": 1124,
+"time": 4.0,
+"in": [[1123,3],[1106,1]],
+"out": [[1124,2]],
 "icon": "icons/recipes/33.webp"
 },
 "34": {
@@ -244,6 +338,9 @@
 "en": "Silicon Ore",
 "group": "smelt",
 "product": 1003,
+"time": 10.0,
+"in": [[1005,10]],
+"out": [[1003,1]],
 "icon": "icons/recipes/34.webp"
 },
 "35": {
@@ -251,6 +348,9 @@
 "en": "Carbon Nanotube (advanced)",
 "group": "chem",
 "product": 1124,
+"time": 4.0,
+"in": [[1015,6]],
+"out": [[1124,2]],
 "icon": "icons/recipes/35.webp"
 },
 "36": {
@@ -258,6 +358,9 @@
 "en": "Particle Broadband",
 "group": "asm",
 "product": 1402,
+"time": 8.0,
+"in": [[1124,2],[1113,2],[1115,1]],
+"out": [[1402,1]],
 "icon": "icons/recipes/36.webp"
 },
 "37": {
@@ -265,6 +368,9 @@
 "en": "Crystal Silicon",
 "group": "smelt",
 "product": 1113,
+"time": 2.0,
+"in": [[1105,1]],
+"out": [[1113,1]],
 "icon": "icons/recipes/37.webp"
 },
 "38": {
@@ -272,6 +378,9 @@
 "en": "Plane Filter",
 "group": "asm",
 "product": 1304,
+"time": 12.0,
+"in": [[1126,1],[1119,2]],
+"out": [[1304,1]],
 "icon": "icons/recipes/38.webp"
 },
 "39": {
@@ -279,6 +388,9 @@
 "en": "Miniature Particle Collider",
 "group": "asm",
 "product": 2310,
+"time": 15.0,
+"in": [[1107,20],[1125,20],[1205,25],[1123,10],[1303,8]],
+"out": [[2310,1]],
 "icon": "icons/recipes/39.webp"
 },
 "40": {
@@ -286,6 +398,9 @@
 "en": "Deuterium",
 "group": "collider",
 "product": 1121,
+"time": 2.5,
+"in": [[1120,10]],
+"out": [[1121,5]],
 "icon": "icons/recipes/40.webp"
 },
 "41": {
@@ -293,6 +408,9 @@
 "en": "Deuteron Fuel Rod",
 "group": "asm",
 "product": 1802,
+"time": 12.0,
+"in": [[1107,1],[1121,20],[1205,1]],
+"out": [[1802,2]],
 "icon": "icons/recipes/41.webp"
 },
 "42": {
@@ -300,6 +418,9 @@
 "en": "Annihilation Constraint Sphere",
 "group": "asm",
 "product": 1403,
+"time": 20.0,
+"in": [[1206,1],[1303,1]],
+"out": [[1403,1]],
 "icon": "icons/recipes/42.webp"
 },
 "43": {
@@ -307,6 +428,9 @@
 "en": "Artificial Star",
 "group": "asm",
 "product": 2210,
+"time": 30.0,
+"in": [[1107,20],[1125,20],[1403,10],[1305,10]],
+"out": [[2210,1]],
 "icon": "icons/recipes/43.webp"
 },
 "44": {
@@ -314,6 +438,9 @@
 "en": "Antimatter Fuel Rod",
 "group": "asm",
 "product": 1803,
+"time": 24.0,
+"in": [[1122,12],[1120,12],[1403,1],[1107,1]],
+"out": [[1803,2]],
 "icon": "icons/recipes/44.webp"
 },
 "45": {
@@ -321,6 +448,9 @@
 "en": "Assembling Machine Mk.I",
 "group": "asm",
 "product": 2303,
+"time": 2.0,
+"in": [[1101,4],[1201,8],[1301,4]],
+"out": [[2303,1]],
 "icon": "icons/recipes/45.webp"
 },
 "46": {
@@ -328,6 +458,9 @@
 "en": "Assembling Machine Mk.II",
 "group": "asm",
 "product": 2304,
+"time": 3.0,
+"in": [[2303,1],[1123,8],[1303,4]],
+"out": [[2304,1]],
 "icon": "icons/recipes/46.webp"
 },
 "47": {
@@ -335,6 +468,9 @@
 "en": "Assembling Machine Mk.III",
 "group": "asm",
 "product": 2305,
+"time": 4.0,
+"in": [[2304,1],[1402,8],[1305,2]],
+"out": [[2305,1]],
 "icon": "icons/recipes/47.webp"
 },
 "48": {
@@ -342,6 +478,9 @@
 "en": "Mining Machine",
 "group": "asm",
 "product": 2301,
+"time": 3.0,
+"in": [[1101,4],[1301,2],[1202,2],[1201,2]],
+"out": [[2301,1]],
 "icon": "icons/recipes/48.webp"
 },
 "49": {
@@ -349,6 +488,9 @@
 "en": "Water Pump",
 "group": "asm",
 "product": 2306,
+"time": 4.0,
+"in": [[1101,8],[1108,4],[1203,4],[1301,2]],
+"out": [[2306,1]],
 "icon": "icons/recipes/49.webp"
 },
 "50": {
@@ -356,6 +498,9 @@
 "en": "Circuit Board",
 "group": "asm",
 "product": 1301,
+"time": 1.0,
+"in": [[1101,2],[1104,1]],
+"out": [[1301,2]],
 "icon": "icons/recipes/50.webp"
 },
 "51": {
@@ -363,6 +508,9 @@
 "en": "Processor",
 "group": "asm",
 "product": 1303,
+"time": 3.0,
+"in": [[1301,2],[1302,2]],
+"out": [[1303,1]],
 "icon": "icons/recipes/51.webp"
 },
 "52": {
@@ -370,6 +518,9 @@
 "en": "Quantum Chip",
 "group": "asm",
 "product": 1305,
+"time": 6.0,
+"in": [[1303,2],[1304,2]],
+"out": [[1305,1]],
 "icon": "icons/recipes/52.webp"
 },
 "53": {
@@ -377,6 +528,9 @@
 "en": "Microcrystalline Component",
 "group": "asm",
 "product": 1302,
+"time": 2.0,
+"in": [[1105,2],[1104,1]],
+"out": [[1302,1]],
 "icon": "icons/recipes/53.webp"
 },
 "54": {
@@ -384,6 +538,9 @@
 "en": "Organic Crystal (original)",
 "group": "asm",
 "product": 1117,
+"time": 6.0,
+"in": [[1030,20],[1031,30],[1000,10]],
+"out": [[1117,1]],
 "icon": "icons/recipes/54.webp"
 },
 "55": {
@@ -391,6 +548,9 @@
 "en": "Information Matrix",
 "group": "lab",
 "product": 6004,
+"time": 10.0,
+"in": [[1303,2],[1402,1]],
+"out": [[6004,1]],
 "icon": "icons/recipes/55.webp"
 },
 "56": {
@@ -398,6 +558,9 @@
 "en": "Arc Smelter",
 "group": "asm",
 "product": 2302,
+"time": 3.0,
+"in": [[1101,4],[1108,2],[1301,4],[1202,2]],
+"out": [[2302,1]],
 "icon": "icons/recipes/56.webp"
 },
 "57": {
@@ -405,6 +568,9 @@
 "en": "Glass",
 "group": "smelt",
 "product": 1110,
+"time": 2.0,
+"in": [[1005,2]],
+"out": [[1110,1]],
 "icon": "icons/recipes/57.webp"
 },
 "58": {
@@ -412,17 +578,20 @@
 "en": "X-ray Cracking",
 "group": "refine",
 "product": 1120,
-"icon": "icons/recipes/58.webp",
-"products": [
-1120,
-1109
-]
+"products": [1120,1109],
+"time": 4.0,
+"in": [[1114,1],[1120,2]],
+"out": [[1120,3],[1109,1]],
+"icon": "icons/recipes/58.webp"
 },
 "59": {
 "name": "Silicio de alta pureza",
 "en": "High-purity Silicon",
 "group": "smelt",
 "product": 1105,
+"time": 2.0,
+"in": [[1003,2]],
+"out": [[1105,1]],
 "icon": "icons/recipes/59.webp"
 },
 "60": {
@@ -430,6 +599,9 @@
 "en": "Diamond",
 "group": "smelt",
 "product": 1112,
+"time": 2.0,
+"in": [[1109,1]],
+"out": [[1112,1]],
 "icon": "icons/recipes/60.webp"
 },
 "61": {
@@ -437,6 +609,9 @@
 "en": "Diamond (advanced)",
 "group": "smelt",
 "product": 1112,
+"time": 1.5,
+"in": [[1012,1]],
+"out": [[1112,2]],
 "icon": "icons/recipes/61.webp"
 },
 "62": {
@@ -444,6 +619,9 @@
 "en": "Crystal Silicon (advanced)",
 "group": "asm",
 "product": 1113,
+"time": 1.5,
+"in": [[1013,1]],
+"out": [[1113,2]],
 "icon": "icons/recipes/62.webp"
 },
 "63": {
@@ -451,6 +629,9 @@
 "en": "Steel",
 "group": "smelt",
 "product": 1103,
+"time": 3.0,
+"in": [[1101,3]],
+"out": [[1103,1]],
 "icon": "icons/recipes/63.webp"
 },
 "64": {
@@ -458,6 +639,9 @@
 "en": "Thermal Power Plant",
 "group": "asm",
 "product": 2204,
+"time": 5.0,
+"in": [[1101,10],[1108,4],[1201,4],[1202,4]],
+"out": [[2204,1]],
 "icon": "icons/recipes/64.webp"
 },
 "65": {
@@ -465,6 +649,9 @@
 "en": "Titanium Ingot",
 "group": "smelt",
 "product": 1106,
+"time": 2.0,
+"in": [[1004,2]],
+"out": [[1106,1]],
 "icon": "icons/recipes/65.webp"
 },
 "66": {
@@ -472,6 +659,9 @@
 "en": "Titanium Alloy",
 "group": "smelt",
 "product": 1107,
+"time": 12.0,
+"in": [[1106,4],[1103,4],[1116,8]],
+"out": [[1107,4]],
 "icon": "icons/recipes/66.webp"
 },
 "67": {
@@ -479,6 +669,9 @@
 "en": "Solar Panel",
 "group": "asm",
 "product": 2205,
+"time": 6.0,
+"in": [[1104,10],[1105,10],[1301,5]],
+"out": [[2205,1]],
 "icon": "icons/recipes/67.webp"
 },
 "68": {
@@ -486,6 +679,9 @@
 "en": "Photon Combiner",
 "group": "asm",
 "product": 1404,
+"time": 3.0,
+"in": [[1111,2],[1301,1]],
+"out": [[1404,1]],
 "icon": "icons/recipes/68.webp"
 },
 "69": {
@@ -493,6 +689,9 @@
 "en": "Photon Combiner (advanced)",
 "group": "asm",
 "product": 1404,
+"time": 3.0,
+"in": [[1014,1],[1301,1]],
+"out": [[1404,1]],
 "icon": "icons/recipes/69.webp"
 },
 "70": {
@@ -500,6 +699,9 @@
 "en": "Solar Sail",
 "group": "asm",
 "product": 1501,
+"time": 4.0,
+"in": [[1123,1],[1404,1]],
+"out": [[1501,2]],
 "icon": "icons/recipes/70.webp"
 },
 "71": {
@@ -507,6 +709,9 @@
 "en": "EM-Rail Ejector",
 "group": "asm",
 "product": 2311,
+"time": 6.0,
+"in": [[1103,20],[1201,20],[1303,5],[1205,10]],
+"out": [[2311,1]],
 "icon": "icons/recipes/71.webp"
 },
 "72": {
@@ -514,6 +719,9 @@
 "en": "Ray Receiver",
 "group": "asm",
 "product": 2208,
+"time": 8.0,
+"in": [[1103,20],[1105,20],[1404,10],[1303,5],[1205,20]],
+"out": [[2208,1]],
 "icon": "icons/recipes/72.webp"
 },
 "73": {
@@ -521,6 +729,9 @@
 "en": "Satellite Substation",
 "group": "asm",
 "product": 2212,
+"time": 5.0,
+"in": [[2202,1],[1205,10],[1125,2]],
+"out": [[2212,1]],
 "icon": "icons/recipes/73.webp"
 },
 "74": {
@@ -528,17 +739,20 @@
 "en": "Mass-energy Storage",
 "group": "collider",
 "product": 1122,
-"icon": "icons/recipes/74.webp",
-"products": [
-1122,
-1120
-]
+"products": [1122,1120],
+"time": 2.0,
+"in": [[1208,2]],
+"out": [[1122,2],[1120,2]],
+"icon": "icons/recipes/74.webp"
 },
 "75": {
 "name": "Matriz universal",
 "en": "Universe Matrix",
 "group": "lab",
 "product": 6006,
+"time": 15.0,
+"in": [[6001,1],[6002,1],[6003,1],[6004,1],[6005,1],[1122,1]],
+"out": [[6006,1]],
 "icon": "icons/recipes/75.webp"
 },
 "76": {
@@ -546,6 +760,9 @@
 "en": "Accumulator",
 "group": "asm",
 "product": 2206,
+"time": 3.0,
+"in": [[1101,6],[1205,1],[1113,3]],
+"out": [[2206,1]],
 "icon": "icons/recipes/76.webp"
 },
 "77": {
@@ -553,6 +770,9 @@
 "en": "Energy Exchanger",
 "group": "asm",
 "product": 2209,
+"time": 15.0,
+"in": [[1107,40],[1103,40],[1303,40],[1206,8]],
+"out": [[2209,1]],
 "icon": "icons/recipes/77.webp"
 },
 "78": {
@@ -560,6 +780,9 @@
 "en": "Space Warper",
 "group": "asm",
 "product": 1210,
+"time": 10.0,
+"in": [[1209,1]],
+"out": [[1210,1]],
 "icon": "icons/recipes/78.webp"
 },
 "79": {
@@ -567,6 +790,9 @@
 "en": "Space Warper (advanced)",
 "group": "asm",
 "product": 1210,
+"time": 10.0,
+"in": [[6005,1]],
+"out": [[1210,8]],
 "icon": "icons/recipes/79.webp"
 },
 "80": {
@@ -574,6 +800,9 @@
 "en": "Frame Material",
 "group": "asm",
 "product": 1125,
+"time": 6.0,
+"in": [[1124,4],[1107,1],[1105,1]],
+"out": [[1125,1]],
 "icon": "icons/recipes/80.webp"
 },
 "81": {
@@ -581,6 +810,9 @@
 "en": "Dyson Sphere Component",
 "group": "asm",
 "product": 1502,
+"time": 8.0,
+"in": [[1125,3],[1501,3],[1303,3]],
+"out": [[1502,1]],
 "icon": "icons/recipes/81.webp"
 },
 "82": {
@@ -588,6 +820,9 @@
 "en": "Vertical Launching Silo",
 "group": "asm",
 "product": 2312,
+"time": 30.0,
+"in": [[1107,80],[1125,30],[1209,20],[1305,10]],
+"out": [[2312,1]],
 "icon": "icons/recipes/82.webp"
 },
 "83": {
@@ -595,6 +830,9 @@
 "en": "Small Carrier Rocket",
 "group": "asm",
 "product": 1503,
+"time": 6.0,
+"in": [[1502,2],[1802,4],[1305,2]],
+"out": [[1503,1]],
 "icon": "icons/recipes/83.webp"
 },
 "84": {
@@ -602,6 +840,9 @@
 "en": "Conveyor Belt MK.I",
 "group": "asm",
 "product": 2001,
+"time": 1.0,
+"in": [[1101,2],[1201,1]],
+"out": [[2001,3]],
 "icon": "icons/recipes/84.webp"
 },
 "85": {
@@ -609,6 +850,9 @@
 "en": "Sorter MK.I",
 "group": "asm",
 "product": 2011,
+"time": 1.0,
+"in": [[1101,1],[1301,1]],
+"out": [[2011,1]],
 "icon": "icons/recipes/85.webp"
 },
 "86": {
@@ -616,6 +860,9 @@
 "en": "Depot MK.I",
 "group": "asm",
 "product": 2101,
+"time": 2.0,
+"in": [[1101,4],[1108,4]],
+"out": [[2101,1]],
 "icon": "icons/recipes/86.webp"
 },
 "87": {
@@ -623,6 +870,9 @@
 "en": "Splitter",
 "group": "asm",
 "product": 2020,
+"time": 2.0,
+"in": [[1101,3],[1201,2],[1301,1]],
+"out": [[2020,1]],
 "icon": "icons/recipes/87.webp"
 },
 "88": {
@@ -630,6 +880,9 @@
 "en": "Sorter MK.II",
 "group": "asm",
 "product": 2012,
+"time": 1.0,
+"in": [[2011,2],[1203,1]],
+"out": [[2012,2]],
 "icon": "icons/recipes/88.webp"
 },
 "89": {
@@ -637,6 +890,9 @@
 "en": "Conveyor Belt MK.II",
 "group": "asm",
 "product": 2002,
+"time": 1.0,
+"in": [[2001,3],[1204,1]],
+"out": [[2002,3]],
 "icon": "icons/recipes/89.webp"
 },
 "90": {
@@ -644,6 +900,9 @@
 "en": "Sorter MK.III",
 "group": "asm",
 "product": 2013,
+"time": 1.0,
+"in": [[2012,2],[1204,1]],
+"out": [[2013,2]],
 "icon": "icons/recipes/90.webp"
 },
 "91": {
@@ -651,6 +910,9 @@
 "en": "Depot MK.II",
 "group": "asm",
 "product": 2102,
+"time": 4.0,
+"in": [[1103,8],[1108,8]],
+"out": [[2102,1]],
 "icon": "icons/recipes/91.webp"
 },
 "92": {
@@ -658,6 +920,9 @@
 "en": "Conveyor Belt MK.III",
 "group": "asm",
 "product": 2003,
+"time": 1.0,
+"in": [[2002,3],[1205,1],[1123,1]],
+"out": [[2003,3]],
 "icon": "icons/recipes/92.webp"
 },
 "93": {
@@ -665,6 +930,9 @@
 "en": "Planetary Logistics Station",
 "group": "asm",
 "product": 2103,
+"time": 20.0,
+"in": [[1103,40],[1106,40],[1303,40],[1206,20]],
+"out": [[2103,1]],
 "icon": "icons/recipes/93.webp"
 },
 "94": {
@@ -672,6 +940,9 @@
 "en": "Logistics Drone",
 "group": "asm",
 "product": 5001,
+"time": 4.0,
+"in": [[1101,5],[1303,2],[1405,2]],
+"out": [[5001,1]],
 "icon": "icons/recipes/94.webp"
 },
 "95": {
@@ -679,6 +950,9 @@
 "en": "Interstellar Logistics Station",
 "group": "asm",
 "product": 2104,
+"time": 30.0,
+"in": [[2103,1],[1107,40],[1206,20]],
+"out": [[2104,1]],
 "icon": "icons/recipes/95.webp"
 },
 "96": {
@@ -686,6 +960,9 @@
 "en": "Interstellar Logistics Vessel",
 "group": "asm",
 "product": 5002,
+"time": 6.0,
+"in": [[1107,10],[1303,10],[1406,2]],
+"out": [[5002,1]],
 "icon": "icons/recipes/96.webp"
 },
 "97": {
@@ -693,6 +970,9 @@
 "en": "Electric Motor",
 "group": "asm",
 "product": 1203,
+"time": 2.0,
+"in": [[1101,2],[1201,1],[1202,1]],
+"out": [[1203,1]],
 "icon": "icons/recipes/97.webp"
 },
 "98": {
@@ -700,6 +980,9 @@
 "en": "Electromagnetic Turbine",
 "group": "asm",
 "product": 1204,
+"time": 2.0,
+"in": [[1203,2],[1202,2]],
+"out": [[1204,1]],
 "icon": "icons/recipes/98.webp"
 },
 "99": {
@@ -707,6 +990,9 @@
 "en": "Particle Container",
 "group": "asm",
 "product": 1206,
+"time": 4.0,
+"in": [[1204,2],[1104,2],[1123,2]],
+"out": [[1206,1]],
 "icon": "icons/recipes/99.webp"
 },
 "100": {
@@ -714,6 +1000,9 @@
 "en": "Particle Container (advanced)",
 "group": "asm",
 "product": 1206,
+"time": 4.0,
+"in": [[1016,10],[1104,2]],
+"out": [[1206,1]],
 "icon": "icons/recipes/100.webp"
 },
 "101": {
@@ -721,6 +1010,9 @@
 "en": "Graviton Lens",
 "group": "asm",
 "product": 1209,
+"time": 6.0,
+"in": [[1112,4],[1127,1]],
+"out": [[1209,1]],
 "icon": "icons/recipes/101.webp"
 },
 "102": {
@@ -728,6 +1020,9 @@
 "en": "Gravity Matrix",
 "group": "lab",
 "product": 6005,
+"time": 24.0,
+"in": [[1209,1],[1305,1]],
+"out": [[6005,2]],
 "icon": "icons/recipes/102.webp"
 },
 "103": {
@@ -735,6 +1030,9 @@
 "en": "Super-magnetic Ring",
 "group": "asm",
 "product": 1205,
+"time": 3.0,
+"in": [[1204,2],[1102,3],[1109,1]],
+"out": [[1205,1]],
 "icon": "icons/recipes/103.webp"
 },
 "104": {
@@ -742,6 +1040,9 @@
 "en": "Strange Matter",
 "group": "collider",
 "product": 1127,
+"time": 8.0,
+"in": [[1206,2],[1101,2],[1121,10]],
+"out": [[1127,1]],
 "icon": "icons/recipes/104.webp"
 },
 "106": {
@@ -749,6 +1050,9 @@
 "en": "Proliferator Mk.I",
 "group": "asm",
 "product": 1141,
+"time": 0.5,
+"in": [[1006,1]],
+"out": [[1141,1]],
 "icon": "icons/recipes/106.webp"
 },
 "107": {
@@ -756,6 +1060,9 @@
 "en": "Proliferator Mk.II",
 "group": "asm",
 "product": 1142,
+"time": 1.0,
+"in": [[1141,2],[1112,1]],
+"out": [[1142,1]],
 "icon": "icons/recipes/107.webp"
 },
 "108": {
@@ -763,6 +1070,9 @@
 "en": "Proliferator Mk.III",
 "group": "asm",
 "product": 1143,
+"time": 2.0,
+"in": [[1142,2],[1124,1]],
+"out": [[1143,1]],
 "icon": "icons/recipes/108.webp"
 },
 "109": {
@@ -770,6 +1080,9 @@
 "en": "Spray Coater",
 "group": "asm",
 "product": 2313,
+"time": 3.0,
+"in": [[1103,4],[1401,2],[1301,2],[1302,2]],
+"out": [[2313,1]],
 "icon": "icons/recipes/109.webp"
 },
 "110": {
@@ -777,6 +1090,9 @@
 "en": "Fractionator",
 "group": "asm",
 "product": 2314,
+"time": 3.0,
+"in": [[1103,8],[1108,4],[1110,4],[1303,1]],
+"out": [[2314,1]],
 "icon": "icons/recipes/110.webp"
 },
 "111": {
@@ -784,6 +1100,9 @@
 "en": "Orbital Collector",
 "group": "asm",
 "product": 2105,
+"time": 30.0,
+"in": [[2104,1],[1205,50],[1406,20],[2207,20]],
+"out": [[2105,1]],
 "icon": "icons/recipes/111.webp"
 },
 "112": {
@@ -791,6 +1110,9 @@
 "en": "Foundation",
 "group": "asm",
 "product": 1131,
+"time": 1.0,
+"in": [[1108,3],[1103,1]],
+"out": [[1131,1]],
 "icon": "icons/recipes/112.webp"
 },
 "113": {
@@ -798,6 +1120,9 @@
 "en": "Mini Fusion Power Plant",
 "group": "asm",
 "product": 2211,
+"time": 10.0,
+"in": [[1107,12],[1205,10],[1124,8],[1303,4]],
+"out": [[2211,1]],
 "icon": "icons/recipes/113.webp"
 },
 "114": {
@@ -805,6 +1130,9 @@
 "en": "Storage Tank",
 "group": "asm",
 "product": 2106,
+"time": 2.0,
+"in": [[1101,8],[1108,4],[1110,4]],
+"out": [[2106,1]],
 "icon": "icons/recipes/114.webp"
 },
 "115": {
@@ -812,6 +1140,9 @@
 "en": "Deuterium Fractionation",
 "group": "fract",
 "product": 1121,
+"time": 0.016666666666666666,
+"in": [[1120,100]],
+"out": [[1121,1]],
 "icon": "icons/recipes/115.webp"
 },
 "116": {
@@ -819,6 +1150,9 @@
 "en": "Plane Smelter",
 "group": "asm",
 "product": 2315,
+"time": 5.0,
+"in": [[2302,1],[1125,5],[1304,4],[1016,15]],
+"out": [[2315,1]],
 "icon": "icons/recipes/116.webp"
 },
 "117": {
@@ -826,6 +1160,9 @@
 "en": "Traffic Monitor",
 "group": "asm",
 "product": 2030,
+"time": 2.0,
+"in": [[1101,3],[1201,2],[1110,1],[1301,2]],
+"out": [[2030,1]],
 "icon": "icons/recipes/117.webp"
 },
 "118": {
@@ -833,6 +1170,9 @@
 "en": "Geothermal Power Station",
 "group": "asm",
 "product": 2213,
+"time": 6.0,
+"in": [[1103,15],[1104,20],[1404,4],[1205,1]],
+"out": [[2213,1]],
 "icon": "icons/recipes/118.webp"
 },
 "119": {
@@ -840,6 +1180,9 @@
 "en": "Advanced Mining Machine",
 "group": "asm",
 "product": 2316,
+"time": 20.0,
+"in": [[1107,20],[1125,10],[1205,10],[1305,4],[1014,40]],
+"out": [[2316,1]],
 "icon": "icons/recipes/119.webp"
 },
 "120": {
@@ -847,6 +1190,9 @@
 "en": "Automatic Piler",
 "group": "asm",
 "product": 2040,
+"time": 4.0,
+"in": [[1103,3],[1201,4],[1205,1],[1303,2]],
+"out": [[2040,1]],
 "icon": "icons/recipes/120.webp"
 },
 "121": {
@@ -854,6 +1200,9 @@
 "en": "Reformed Refinement",
 "group": "refine",
 "product": 1114,
+"time": 4.0,
+"in": [[1114,2],[1120,1],[1006,1]],
+"out": [[1114,3]],
 "icon": "icons/recipes/121.webp"
 },
 "122": {
@@ -861,13 +1210,19 @@
 "en": "Logistics Distributor",
 "group": "asm",
 "product": 2107,
+"time": 8.0,
+"in": [[1101,8],[1401,4],[1303,4]],
+"out": [[2107,1]],
 "icon": "icons/recipes/122.webp"
 },
 "123": {
-"name": "Mecha",
+"name": "Bot logístico",
 "en": "Logistics Bot",
 "group": "asm",
 "product": 5003,
+"time": 2.0,
+"in": [[1101,2],[1407,1],[1303,1]],
+"out": [[5003,1]],
 "icon": "icons/recipes/123.webp"
 },
 "124": {
@@ -875,6 +1230,9 @@
 "en": "Quantum Chemical Plant",
 "group": "asm",
 "product": 2317,
+"time": 10.0,
+"in": [[2309,1],[1119,10],[1127,3],[1305,3]],
+"out": [[2317,1]],
 "icon": "icons/recipes/124.webp"
 },
 "125": {
@@ -882,6 +1240,9 @@
 "en": "Gauss Turret",
 "group": "asm",
 "product": 3001,
+"time": 4.0,
+"in": [[1101,8],[1201,8],[1301,2],[1202,4]],
+"out": [[3001,1]],
 "icon": "icons/recipes/125.webp"
 },
 "126": {
@@ -889,6 +1250,9 @@
 "en": "Laser Turret",
 "group": "asm",
 "product": 3002,
+"time": 6.0,
+"in": [[1103,9],[1401,6],[1301,6],[1404,9]],
+"out": [[3002,1]],
 "icon": "icons/recipes/126.webp"
 },
 "127": {
@@ -896,6 +1260,9 @@
 "en": "Implosion Cannon",
 "group": "asm",
 "product": 3003,
+"time": 5.0,
+"in": [[1103,10],[1203,8],[1301,10],[1205,2]],
+"out": [[3003,1]],
 "icon": "icons/recipes/127.webp"
 },
 "128": {
@@ -903,6 +1270,9 @@
 "en": "Plasma Turret",
 "group": "asm",
 "product": 3004,
+"time": 10.0,
+"in": [[1107,20],[1119,10],[1205,10],[1401,5],[1303,5]],
+"out": [[3004,1]],
 "icon": "icons/recipes/128.webp"
 },
 "129": {
@@ -910,6 +1280,9 @@
 "en": "Missile Turret",
 "group": "asm",
 "product": 3005,
+"time": 6.0,
+"in": [[1103,8],[1203,6],[1301,12],[1407,6]],
+"out": [[3005,1]],
 "icon": "icons/recipes/129.webp"
 },
 "130": {
@@ -917,6 +1290,9 @@
 "en": "Jammer Tower",
 "group": "asm",
 "product": 3006,
+"time": 5.0,
+"in": [[1104,12],[1401,9],[1112,6],[1303,3]],
+"out": [[3006,1]],
 "icon": "icons/recipes/130.webp"
 },
 "131": {
@@ -924,6 +1300,9 @@
 "en": "Signal Tower",
 "group": "asm",
 "product": 3007,
+"time": 6.0,
+"in": [[2202,2],[1103,12],[1113,6]],
+"out": [[3007,1]],
 "icon": "icons/recipes/131.webp"
 },
 "132": {
@@ -931,146 +1310,209 @@
 "en": "Planetary Shield Generator",
 "group": "asm",
 "product": 3008,
+"time": 10.0,
+"in": [[1103,20],[1204,20],[1205,5],[1206,5]],
+"out": [[3008,1]],
 "icon": "icons/recipes/132.webp"
 },
 "133": {
-"name": "Combustible Unit",
+"name": "Unidad de combustible",
 "en": "Combustible Unit",
 "group": "asm",
 "product": 1128,
+"time": 3.0,
+"in": [[1006,3]],
+"out": [[1128,1]],
 "icon": "icons/recipes/133.webp"
 },
 "134": {
-"name": "Explosive Unit",
+"name": "Unidad explosiva",
 "en": "Explosive Unit",
 "group": "chem",
 "product": 1129,
+"time": 6.0,
+"in": [[1128,2],[1115,2],[1116,1]],
+"out": [[1129,2]],
 "icon": "icons/recipes/134.webp"
 },
 "135": {
-"name": "Crystal Explosive Unit",
+"name": "Unidad explosiva de cristal",
 "en": "Crystal Explosive Unit",
 "group": "chem",
 "product": 1130,
+"time": 24.0,
+"in": [[1129,8],[1126,1],[1113,8]],
+"out": [[1130,8]],
 "icon": "icons/recipes/135.webp"
 },
 "136": {
-"name": "Magnum Ammo Box",
+"name": "Caja de munición Magnum",
 "en": "Magnum Ammo Box",
 "group": "asm",
 "product": 1601,
+"time": 1.0,
+"in": [[1104,3]],
+"out": [[1601,1]],
 "icon": "icons/recipes/136.webp"
 },
 "137": {
-"name": "Titanium Ammo Box",
+"name": "Caja de munición de titanio",
 "en": "Titanium Ammo Box",
 "group": "asm",
 "product": 1602,
+"time": 2.0,
+"in": [[1601,1],[1106,2]],
+"out": [[1602,1]],
 "icon": "icons/recipes/137.webp"
 },
 "138": {
-"name": "Superalloy Ammo Box",
+"name": "Caja de munición de superaleación",
 "en": "Superalloy Ammo Box",
 "group": "asm",
 "product": 1603,
+"time": 3.0,
+"in": [[1602,1],[1107,1]],
+"out": [[1603,1]],
 "icon": "icons/recipes/138.webp"
 },
 "139": {
-"name": "Shell Set",
+"name": "Set de proyectiles",
 "en": "Shell Set",
 "group": "asm",
 "product": 1604,
+"time": 1.5,
+"in": [[1104,9],[1128,2]],
+"out": [[1604,1]],
 "icon": "icons/recipes/139.webp"
 },
 "140": {
-"name": "High-Explosive Shell Set",
+"name": "Set de proyectiles explosivos",
 "en": "High-Explosive Shell Set",
 "group": "asm",
 "product": 1605,
+"time": 3.0,
+"in": [[1604,1],[1106,6],[1129,2]],
+"out": [[1605,1]],
 "icon": "icons/recipes/140.webp"
 },
 "141": {
-"name": "Crystal Shell Set",
+"name": "Set de proyectiles de cristal",
 "en": "Crystal Shell Set",
 "group": "asm",
 "product": 1606,
+"time": 6.0,
+"in": [[1605,1],[1107,3],[1130,2]],
+"out": [[1606,1]],
 "icon": "icons/recipes/141.webp"
 },
 "142": {
-"name": "Plasma Capsule",
+"name": "Cápsula de plasma",
 "en": "Plasma Capsule",
 "group": "asm",
 "product": 1607,
+"time": 2.0,
+"in": [[1123,1],[1102,2],[1121,10]],
+"out": [[1607,1]],
 "icon": "icons/recipes/142.webp"
 },
 "143": {
-"name": "Antimatter Capsule",
+"name": "Cápsula de antimateria",
 "en": "Antimatter Capsule",
 "group": "asm",
 "product": 1608,
+"time": 2.0,
+"in": [[1607,1],[1206,1],[1120,10],[1122,10]],
+"out": [[1608,1]],
 "icon": "icons/recipes/143.webp"
 },
 "144": {
-"name": "Missile Set",
+"name": "Set de misiles",
 "en": "Missile Set",
 "group": "asm",
 "product": 1609,
+"time": 2.0,
+"in": [[1104,6],[1301,3],[1128,2],[1407,1]],
+"out": [[1609,1]],
 "icon": "icons/recipes/144.webp"
 },
 "145": {
-"name": "Supersonic Missile Set",
+"name": "Set de misiles supersónicos",
 "en": "Supersonic Missile Set",
 "group": "asm",
 "product": 1610,
+"time": 4.0,
+"in": [[1609,2],[1303,4],[1129,4],[1405,2]],
+"out": [[1610,2]],
 "icon": "icons/recipes/145.webp"
 },
 "146": {
-"name": "Gravity Missile Set",
+"name": "Set de misiles gravitatorios",
 "en": "Gravity Missile Set",
 "group": "asm",
 "product": 1611,
+"time": 6.0,
+"in": [[1610,3],[1130,6],[1127,3]],
+"out": [[1611,3]],
 "icon": "icons/recipes/146.webp"
 },
 "147": {
-"name": "Prototype",
+"name": "Prototipo",
 "en": "Prototype",
 "group": "asm",
 "product": 5101,
+"time": 2.0,
+"in": [[1101,3],[1407,1],[1301,2],[1401,1]],
+"out": [[5101,1]],
 "icon": "icons/recipes/147.webp"
 },
 "148": {
-"name": "Precision Drone",
+"name": "Dron de precisión",
 "en": "Precision Drone",
 "group": "asm",
 "product": 5102,
+"time": 4.0,
+"in": [[5101,1],[1204,1],[1301,2],[1404,2]],
+"out": [[5102,1]],
 "icon": "icons/recipes/148.webp"
 },
 "149": {
-"name": "Attack Drone",
+"name": "Dron de ataque",
 "en": "Attack Drone",
 "group": "asm",
 "product": 5103,
+"time": 4.0,
+"in": [[5101,1],[1204,1],[1303,1],[1206,1]],
+"out": [[5103,1]],
 "icon": "icons/recipes/149.webp"
 },
 "150": {
-"name": "Corvette",
+"name": "Corbeta",
 "en": "Corvette",
 "group": "asm",
 "product": 5111,
+"time": 5.0,
+"in": [[1107,5],[1406,1],[1303,2],[1206,3]],
+"out": [[5111,1]],
 "icon": "icons/recipes/150.webp"
 },
 "151": {
-"name": "Destroyer",
+"name": "Destructor",
 "en": "Destroyer",
 "group": "asm",
 "product": 5112,
+"time": 8.0,
+"in": [[1125,20],[1406,4],[1303,4],[1127,1]],
+"out": [[5112,1]],
 "icon": "icons/recipes/151.webp"
 },
 "105": {
-"name": "Engine",
+"name": "Motor",
 "en": "Engine",
 "group": "asm",
 "product": 1407,
+"time": 3.0,
+"in": [[1202,1],[1104,2]],
+"out": [[1407,1]],
 "icon": "icons/recipes/105.webp"
 },
 "152": {
@@ -1078,6 +1520,9 @@
 "en": "Battlefield Analysis Base",
 "group": "asm",
 "product": 3009,
+"time": 6.0,
+"in": [[1103,12],[1301,18],[1302,6],[1407,12]],
+"out": [[3009,1]],
 "icon": "icons/recipes/152.webp"
 },
 "153": {
@@ -1085,6 +1530,9 @@
 "en": "Self-evolution Lab",
 "group": "asm",
 "product": 2902,
+"time": 4.0,
+"in": [[2901,1],[5202,10],[5201,20],[1305,4]],
+"out": [[2902,1]],
 "icon": "icons/recipes/153.webp"
 },
 "154": {
@@ -1092,6 +1540,9 @@
 "en": "Re-composing Assembler",
 "group": "asm",
 "product": 2318,
+"time": 5.0,
+"in": [[2305,1],[5203,10],[5206,30],[1305,4]],
+"out": [[2318,1]],
 "icon": "icons/recipes/154.webp"
 },
 "155": {
@@ -1099,34 +1550,49 @@
 "en": "Negentropy Smelter",
 "group": "asm",
 "product": 2319,
+"time": 6.0,
+"in": [[2315,1],[5204,10],[5206,30],[1305,4]],
+"out": [[2319,1]],
 "icon": "icons/recipes/155.webp"
 },
 "156": {
-"name": "Strange Annihilation Fuel Rod",
+"name": "Barra de aniquilación extraña",
 "en": "Strange Annihilation Fuel Rod",
 "group": "asm",
 "product": 1804,
+"time": 32.0,
+"in": [[1803,8],[5205,1],[1127,2],[1125,1]],
+"out": [[1804,1]],
 "icon": "icons/recipes/156.webp"
 },
 "157": {
-"name": "SR Plasma Turret",
+"name": "Torreta de plasma SR",
 "en": "SR Plasma Turret",
 "group": "asm",
 "product": 3010,
+"time": 8.0,
+"in": [[1103,15],[1205,5],[1401,5],[1303,5]],
+"out": [[3010,1]],
 "icon": "icons/recipes/157.webp"
 },
 "158": {
-"name": "Jamming Capsule",
+"name": "Cápsula de interferencia",
 "en": "Jamming Capsule",
 "group": "asm",
 "product": 1612,
+"time": 2.0,
+"in": [[1204,1],[1401,1],[1120,3]],
+"out": [[1612,1]],
 "icon": "icons/recipes/158.webp"
 },
 "159": {
-"name": "Suppressing Capsule",
+"name": "Cápsula supresora",
 "en": "Suppressing Capsule",
 "group": "asm",
 "product": 1613,
+"time": 8.0,
+"in": [[1612,2],[1205,1],[1119,2]],
+"out": [[1613,2]],
 "icon": "icons/recipes/159.webp"
 },
 "160": {
@@ -1134,6 +1600,9 @@
 "en": "Pile Sorter",
 "group": "asm",
 "product": 2014,
+"time": 1.0,
+"in": [[2013,2],[1205,1],[1303,1]],
+"out": [[2014,1]],
 "icon": "icons/recipes/160.webp"
 }
 };

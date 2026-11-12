@@ -163,3 +163,36 @@ details.adv summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 #inspector .otile { width: 34px; height: 34px; }
 #inspector .otile img { width: 26px; height: 26px; }
 #inspector .otile .onone { font-size: 9px; }
+
+/* Receta: entradas, salidas y balance */
+.recipe-io { margin-top: 6px; }
+.io { display: flex; align-items: center; gap: 6px; margin: 2px 0; font-size: 12px; }
+.io .ion { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.io .ior { color: var(--accent); font-variant-numeric: tabular-nums; }
+table.rates { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.rates td { padding: 1px 3px; }
+table.rates td:first-child { width: 20px; }
+#inspector table.rates td.pos { color: var(--ok); }
+#inspector table.rates td.neg { color: var(--danger); }
+#inspector table.rates td.muted { color: var(--muted); }
+
+/* Comprobación de suministro */
+.okmark { color: var(--ok); width: 12px; text-align: center; }
+.badmark { color: var(--danger); width: 12px; text-align: center; font-weight: 700; }
+.issues { margin: 6px 0; }
+.issue { display: flex; gap: 6px; align-items: baseline; font-size: 12px; margin: 3px 0; }
+.issue .lv { font-weight: 700; width: 12px; text-align: center; flex: none; }
+.issue.error .lv { color: var(--danger); }
+.issue.warn .lv { color: var(--accent); }
+.warn-text { color: var(--accent); }
+.ok-text { color: var(--ok); }
+.carries { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.carry { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+
+/* Simulación */
+.simbar { position: relative; height: 16px; background: #1d2330; border-radius: 4px; overflow: hidden; margin: 4px 0; }
+.simbar span { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.simbar span.full { background: var(--ok); }
+.simbar span.zero { background: var(--danger); }
+.simbar b { position: relative; display: block; text-align: center; font-size: 11px; line-height: 16px; color: #fff; text-shadow: 0 0 3px #000; }
+.issue .lv { min-width: 12px; width: auto; }
