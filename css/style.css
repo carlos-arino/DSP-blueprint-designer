@@ -175,3 +175,16 @@ table.rates td:first-child { width: 20px; }
 #inspector table.rates td.pos { color: var(--ok); }
 #inspector table.rates td.neg { color: var(--danger); }
 #inspector table.rates td.muted { color: var(--muted); }
+
+/* Comprobación de suministro */
+.okmark { color: var(--ok); width: 12px; text-align: center; }
+.badmark { color: var(--danger); width: 12px; text-align: center; font-weight: 700; }
+.issues { margin: 6px 0; }
+.issue { display: flex; gap: 6px; align-items: baseline; font-size: 12px; margin: 3px 0; }
+.issue .lv { font-weight: 700; width: 12px; text-align: center; flex: none; }
+.issue.error .lv { color: var(--danger); }
+.issue.warn .lv { color: var(--accent); }
+.warn-text { color: var(--accent); }
+.ok-text { color: var(--ok); }
+.carries { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.carry { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }

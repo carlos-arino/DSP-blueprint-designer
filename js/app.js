@@ -5,6 +5,7 @@
   const IT = window.DSPItems;
   const PR = window.DSPProps;   // propiedades de edificios (js/props.js)
   const RT = window.DSPRates;   // ritmos de producción y potencia (js/rates.js)
+  const FL = window.DSPFlow;    // qué productos llegan a cada sitio (js/flow.js)
   const $ = (id) => document.getElementById(id);
 
   // Colores por nivel, iguales para cintas y clasificadores (Mk.I amarillo, Mk.II verde, Mk.III azul)
@@ -24,6 +25,7 @@
     clip: null, undo: [], redo: [], dirty: false,
     mouse: { sx: 0, sy: 0, wx: 0, wy: 0, inside: false }, drag: null, space: false,
     templates: {}, showLabels: true, showLinks: false,
+    showChecks: (() => { try { return localStorage.getItem('dspShowChecks') !== '0'; } catch (e) { return true; } })(),
     level: 'all', splitModel: 39, beltFlip: false,
   };
 
@@ -804,6 +806,22 @@
 
   function order(b) { return isSorter(b) ? 2 : isBelt(b) ? 1 : 0; }
 
+  // Avisos de la comprobación: «!» rojo (le falta algo) o naranja (mezcla, sin salida…) en la esquina noroeste
+  function drawFlowMarks(list, offsetOf) {
+    const s = S.view.scale, marks = S.flowMarks;
+    if (!marks || !marks.size || s < 2) return;
+    const bs = S.bp.buildings;
+    for (const b of list) {
+      const lv = marks.get(bs.indexOf(b)); if (!lv || (lv === 'warn' && s < 6)) continue;
+      const [ox, oy] = offsetOf(b), fp = isBelt(b) ? { w: 0.6, h: 0.6 } : footprint(b);
+      const [x, y] = w2s(b.x - fp.w / 2 + 0.3 + ox, b.y + fp.h / 2 - 0.3 + oy), k = Math.max(7, Math.min(s * 0.45, 14));
+      ctx.fillStyle = lv === 'error' ? '#e05555' : '#f0a030';
+      ctx.beginPath(); ctx.arc(x, y, k, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#0f1218'; ctx.font = `bold ${Math.round(k * 1.4)}px Segoe UI`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('!', x, y + 1);
+    }
+  }
+
   // Iconos de lo que sale por cada puerto de estación y del filtro de los divisores
   function drawOutputIcons(list, offsetOf) {
     const s = S.view.scale;
@@ -874,6 +892,7 @@
     drawList(visible.filter((b) => order(b) === 0 && b.z > 0.5));
     drawList(visible.filter(isSorter));
     if (S.showLabels) drawOutputIcons(visible, offsetOf);
+    if (S.showChecks) drawFlowMarks(visible, offsetOf);
 
     // choques: los del blueprint (salvo lo que se está moviendo) y los de los fantasmas
     if (moving && (moving.dx || moving.dy)) {
@@ -1969,8 +1988,15 @@
   });
 
   // ------------------------------------------------------------------ inspector
+  // Comprobación de suministro: se recalcula en cada cambio (unos milisegundos)
+  function updateFlow() {
+    S.flow = S.bp ? FL.analyze(S.bp.buildings) : null;
+    S.flowMarks = new Map();
+    if (S.flow) for (const x of S.flow.issues) if (x.level === 'error' || !S.flowMarks.has(x.i)) S.flowMarks.set(x.i, x.level);
+  }
   function refresh() {
     updateHits();
+    updateFlow();
     requestDraw();
     renderInspector();
     updateStatus();
@@ -2031,6 +2057,7 @@
       ${field('Fecha', `<span class="muted">${date ? date.toLocaleString() : '—'}</span>`)}
       ${field('Hash', S.bp.hashOk ? '<span class="badge ok">válido</span>' : '<span class="badge bad">no coincidía</span>')}
       ${field('Tamaño', `<span class="muted">${S.bp.areas[0] ? S.bp.areas[0].size.x + ' × ' + S.bp.areas[0].size.y : '—'} (${S.bp.areas.length} área${S.bp.areas.length > 1 ? 's' : ''})</span>`)}
+      ${checksHTML()}
       ${totalsHTML(S.bp.buildings, 'del blueprint')}
       <hr class="sep">
       <h3>Edificios (${S.bp.buildings.length})</h3>
@@ -2104,6 +2131,7 @@
       html += `<h4>Tipo</h4>${chips(BELT_TIERS, (id) => id === b.itemId, 'tier')}
         <p class="muted small">Esta cinta. <span class="link" data-act="lineSel">Seleccionar la línea (${line.size})</span> para cambiarla entera.</p>
         <h4>Icono en la cinta</h4>${itemButton('pickLabel', b.parameters[0] || 0, 'Sin icono')}
+        ${carriesHTML(idx)}
         <h4>Recorrido</h4>
         ${field('Viene de', bs.some((x) => isBelt(x) && bs[x.outputObjIdx] === b) ? 'otra cinta' : (b.inputObjIdx >= 0 ? endLabel(b.inputObjIdx, b.inputFromSlot) : '<span class="muted">inicio</span>'))}
         ${field('Va a', b.outputObjIdx >= 0 ? endLabel(b.outputObjIdx, b.outputToSlot) : '<span class="muted">final</span>')}`;
@@ -2126,6 +2154,7 @@
       const below = b.inputObjIdx >= 0 && bs[b.inputObjIdx] && !isBelt(bs[b.inputObjIdx]) && !isSorter(bs[b.inputObjIdx]) &&
         Math.abs(bs[b.inputObjIdx].x - b.x) < 0.3 && Math.abs(bs[b.inputObjIdx].y - b.y) < 0.3 ? bs[b.inputObjIdx] : null;
       html += inspHead(b, `#${idx}${b.z > 0.5 ? ` · altura ${r2(b.z)}` : ''}`);
+      html += issuesOf(idx);
       if (g || b.recipeId) html += `<h4>Receta <span class="muted small">(E)</span></h4><div class="wide">${recipeButton(b.recipeId)}</div>${rateHTML(b)}`;
       html += powerHTML(b);
       if (b.itemId === 2020 && SPLIT[b.modelIndex]) {
@@ -2189,7 +2218,8 @@
   const fmtRate = (v) => (v >= 100 ? Math.round(v) : v >= 10 ? Math.round(v * 10) / 10 : Math.round(v * 100) / 100).toLocaleString('es');
   const fmtTime = (v) => `${Math.round(v * 1000) / 1000} s`.replace('.', ',');
   const fmtPower = (kw) => (Math.abs(kw) >= 1000 ? `${(Math.round(kw / 10) / 100).toLocaleString('es')} MW` : `${(Math.round(kw * 10) / 10).toLocaleString('es')} kW`);
-  const ioRow = (id, n, perMin) => `<div class="io"><span class="ioi">${itemIcon(id, 22)}</span><span class="ion">${esc(IT.itemName(id))}</span>${n !== null ? `<span class="muted">×${n}</span>` : ''}<span class="ior">${fmtRate(perMin)}/min</span></div>`;
+  const gotOf = (b) => (S.flow && S.flow.supplied.get(S.bp.buildings.indexOf(b))) || new Set();
+  const ioRow = (id, n, perMin, ok) => `<div class="io">${ok === undefined ? '' : `<span class="${ok ? 'okmark' : 'badmark'}">${ok ? '✓' : '✗'}</span>`}<span class="ioi">${itemIcon(id, 22)}</span><span class="ion">${esc(IT.itemName(id))}</span>${n !== null ? `<span class="muted">×${n}</span>` : ''}<span class="ior">${fmtRate(perMin)}/min</span></div>`;
   // Receta de una máquina: tiempo con su multiplicador, entradas y salidas por ciclo y por minuto
   function rateHTML(b) {
     const m = RT.machine(b);
@@ -2198,7 +2228,7 @@
     const sp = m.speed !== 1 ? `${fmtTime(m.base)} × 1/${String(m.speed).replace('.', ',')} = <b>${fmtTime(m.cycle)}</b>` : `<b>${fmtTime(m.cycle)}</b>`;
     return `<div class="recipe-io">
       ${field('Ciclo', `${sp} <span class="muted small">(velocidad x${String(m.speed).replace('.', ',')})</span>`)}
-      <div class="muted small">Entradas</div>${src.in.map(([id, n], i) => ioRow(id, n, m.in[i][1])).join('')}
+      <div class="muted small">Entradas <span class="small">(✓ le llega · ✗ no le llega)</span></div>${src.in.map(([id, n], i) => ioRow(id, n, m.in[i][1], gotOf(b).has(id))).join('')}
       <div class="muted small">Salidas</div>${src.out.map(([id, n], i) => ioRow(id, n, m.out[i][1])).join('')}
     </div>`;
   }
@@ -2208,6 +2238,31 @@
     if (p.work < 0) return `<h4>Energía</h4>${field('Genera', fmtPower(-p.work))}`;
     return `<h4>Consumo</h4>${field('Trabajando', fmtPower(p.work))}${field('En reposo', fmtPower(p.idle))}`;
   }
+  // Comprobación de suministro (js/flow.js)
+  const LEVEL = { error: '✗', warn: '!' };
+  function issueRow(x) {
+    const b = S.bp.buildings[x.i], info = b ? IT.buildingInfo(b.itemId) : { name: '?' };
+    return `<div class="issue ${x.level}"><span class="lv">${LEVEL[x.level]}</span><span><span class="link" data-goto="${x.i}">${esc(info.name)} #${x.i}</span>: ${esc(x.msg)}</span></div>`;
+  }
+  function issuesOf(i) {
+    const l = S.flow ? S.flow.issues.filter((x) => x.i === i) : [];
+    return l.length ? `<div class="issues">${l.map((x) => `<div class="issue ${x.level}"><span class="lv">${LEVEL[x.level]}</span><span>${esc(x.msg)}</span></div>`).join('')}</div>` : '';
+  }
+  function checksHTML() {
+    if (!S.flow) return '';
+    const l = S.flow.issues, err = l.filter((x) => x.level === 'error'), warn = l.filter((x) => x.level === 'warn');
+    const MAX = 40, rows = [...err, ...warn].slice(0, MAX).map(issueRow).join('');
+    return `<hr class="sep"><h3>Comprobación</h3>
+      <p class="muted small">Llega lo que pide cada receta por cintas con etiqueta, salidas de estaciones, almacenes o salidas de otras máquinas.</p>
+      ${l.length ? `<p class="small"><span class="bad-text">${err.length} errores</span> · <span class="warn-text">${warn.length} avisos</span>${l.length > MAX ? ` (se muestran ${MAX})` : ''}</p>${rows}` : '<p class="ok-text small">✓ A todas las máquinas les llega lo que necesitan y no hay mezclas.</p>'}
+      <label class="pcheck"><input type="checkbox" id="showChecks"${S.showChecks ? ' checked' : ''}> Marcar los avisos en el plano</label>`;
+  }
+  function carriesHTML(i) {
+    const s = S.flow && S.flow.items.get(i);
+    const list = s && s.size ? [...s].map((id) => `<span class="carry" title="${esc(IT.itemName(id))}">${itemIcon(id, 22)}<span>${esc(IT.itemName(id))}</span></span>`).join('') : '<span class="muted small">Nada (sin etiqueta ni origen conocido)</span>';
+    return `<h4>Lleva</h4><div class="carries">${list}</div>${issuesOf(i)}`;
+  }
+
   // Balance de un grupo de edificios: lo que se produce y consume por minuto y la potencia
   function totalsHTML(list, what) {
     const t = RT.totals(list);
@@ -2578,6 +2633,7 @@
     if (t.id === 'hLayout') { pushUndo(); h.layout = parseInt(t.value, 10) || 10; return; }
     if (t.dataset.icon !== undefined) { pushUndo(); h.icons[+t.dataset.icon] = parseInt(t.value, 10) || 0; renderInspector(); return; }
     if (t.dataset.p) { propChange(t); return; }
+    if (t.id === 'showChecks') { S.showChecks = t.checked; try { localStorage.setItem('dspShowChecks', t.checked ? '1' : '0'); } catch (e) { /* sin almacenamiento */ } requestDraw(); return; }
     if (t.dataset.f) {
       const b = [...S.sel][0], f = t.dataset.f, v = parseFloat(t.value);
       if (!Number.isFinite(v)) return;
@@ -2732,7 +2788,7 @@
       version: 1,
       help() {
         return `DSP Blueprint Designer API (window.DSP) — ver API.md
-Consultar: info() · list({kind,itemId,near:[x,y,r],recipe}) · get(i) · catalog(texto) · recipes(itemId) · slots(i) · ports(i) · props(i) · balance([indices]) · collisions()
+Consultar: info() · list({kind,itemId,near:[x,y,r],recipe}) · get(i) · catalog(texto) · recipes(itemId) · slots(i) · ports(i) · props(i) · balance([indices]) · checks() · collisions()
 Archivo:   load(texto) (async) · export() (async) · newBlueprint(nombre) · setInfo({name,desc})
 Construir: place(itemId,x,y,{yaw,recipe,model}) · belt([[x,y],...],{tier,level}) · sorter(desde,hasta,{tier,filter})
            duplicate(indices,dx,dy)
@@ -2769,6 +2825,11 @@ Editor:    select(indices) · selection() · undo() · redo() · fit()`;
         return { ...describe(b), ...(p ? { props: p } : {}), ...(m ? { rates: m } : {}), ...(w ? { power: w } : {}), raw: JSON.parse(JSON.stringify(b)) };
       },
       balance(indices) { return S.bp ? RT.totals(indices === undefined ? bsx() : arr(indices).map(get)) : null; },
+      checks() {
+        if (!S.bp) return null;
+        const f = FL.analyze(bsx()), set = (m, i) => [...(m.get(i) || [])];
+        return { issues: f.issues, carries: (i) => set(f.items, i), supplied: (i) => set(f.supplied, i) };
+      },
       props(i) { return PR.read(get(i)); },
       setProps(indices, changes) {
         return act(() => {

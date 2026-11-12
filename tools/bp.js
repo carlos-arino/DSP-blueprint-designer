@@ -3,7 +3,7 @@
 //
 //   node tools/bp.js decode  BP.txt  [salida.json]   blueprint → JSON legible (con nombres de edificios)
 //   node tools/bp.js encode  BP.json [salida.txt]    JSON → blueprint (hash recalculado)
-//   node tools/bp.js check   BP.txt|BP.json          hash, choques y clasificadores sueltos
+//   node tools/bp.js check   BP.txt|BP.json          hash, choques, clasificadores sueltos y suministro
 //   node tools/bp.js info    BP.txt|BP.json          resumen por tipo de edificio, balance por minuto y potencia
 //
 // En el JSON, cada edificio lleva "_name" (solo informativo; se ignora al codificar). Las conexiones son índices
@@ -16,6 +16,7 @@ const COL = require('../js/collision.js').make(globalThis.DSPGeometry, globalThi
 const IT = globalThis.DSPItems;
 const PR = require('../js/props.js');
 const RT = require('../js/rates.js');
+const FL = require('../js/flow.js');
 
 const name = (id) => (IT.BUILDINGS[id] ? IT.BUILDINGS[id].en : IT.itemName(id));
 
@@ -57,6 +58,10 @@ const out = (data, file) => (file ? fs.writeFileSync(file, data) : process.stdou
     for (const [a, b] of pairs.slice(0, 20)) console.log(`  #${bs.indexOf(a)} ${name(a.itemId)} (${a.x},${a.y}) ↔ #${bs.indexOf(b)} ${name(b.itemId)} (${b.x},${b.y})`);
     console.log(`clasificadores sueltos: ${loose.length}${loose.length ? ' → ' + loose.map((b) => '#' + bs.indexOf(b)).join(' ') : ''}`);
     if (badRef.length) console.log(`conexiones a índices que no existen: ${badRef.map((b) => '#' + bs.indexOf(b)).join(' ')}`);
+    // suministro: a cada máquina le llega lo que pide su receta; mezclas en cintas (no cambia el código de salida)
+    const iss = FL.analyze(bs).issues, err = iss.filter((x) => x.level === 'error');
+    console.log(`suministro: ${err.length} errores, ${iss.length - err.length} avisos`);
+    for (const x of [...err, ...iss.filter((x) => x.level !== 'error')].slice(0, 40)) console.log(`  ${x.level === 'error' ? '✗' : '!'} #${x.i} ${name(bs[x.i].itemId)}: ${x.msg}`);
     process.exit(pairs.length || loose.length || badRef.length ? 2 : 0);
   } else if (cmd === 'info') {
     const c = new Map();

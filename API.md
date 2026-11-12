@@ -43,6 +43,7 @@ const code = await DSP.export()                             // texto BLUEPRINT:.
 | `slots(i)` | Huecos de clasificador del edificio: `{ slot, x, y, used }` |
 | `ports(i)` | Puertos de cinta (divisor, estaciones, intercambiador…): `{ slot, x, y, dir, level }` |
 | `props(i)` | Propiedades legibles del edificio (ver «Propiedades» más abajo), o `null` si no tiene |
+| `checks()` | Comprobación de suministro: `{ issues, carries(i), supplied(i) }`. `issues` son `{ level: 'error' \| 'warn', kind, i, msg, items }` (`missing`: a la máquina le falta algo de su receta; `noout`: nadie saca lo que fabrica; `mix`: mezcla en una cinta; `station`: le entra algo que no tiene; `port`: puerto de salida sin producto). `carries(i)` dice qué lleva una cinta o almacén y `supplied(i)` qué le llega a una máquina |
 | `balance(indices)` | Balance por minuto de esos edificios (o de todo el blueprint): `{ items: [[objeto, entra, sale]], machines, work, idle, gen, notes }`, con la potencia en kW. Ver «Ritmos y potencia» |
 | `collisions()` | Pares que chocan en el blueprint actual |
 
@@ -99,6 +100,10 @@ En `list()` y `get()` cada edificio trae `i, itemId, name, kind, x, y, z, yaw` y
 | Estaciones (2103, 2104) | `slots`: `[{ item, local, remote, max }]` con 0 almacén, 1 ofrecer, 2 pedir (al poner un producto en una casilla vacía, el límite es 5000 en la PLS y 10000 en la ILS si no se da `max`) · `ports`: 12 puertos `{ dir, storage }` (dir 1 sale, 2 entra; storage = nº de producto 1…n que sale por ese puerto) · `chargeMW`, `droneRange` (grados), `droneMinLoad`, `vesselRangeLY` (100 = ∞), `vesselMinLoad`, `warpAU`, `warpersRequired`, `orbitalCollector`, `outgoingCount` (0 = límite de tecnología), `autoDrones`, `autoVessels` |
 | Divisor (2020) | `priority`: 4 booleanos por puerto (0 N, 1 E, 2 S, 3 O en el de 4 lados); `filter`: producto que sale por la salida con prioridad |
 
+### Comprobación de suministro
+
+`js/flow.js` propaga qué productos hay en cada cinta: entran por **cintas con etiqueta** (se supone que traen ese producto), **puertos de salida de estaciones** (el producto elegido), **salidas de máquinas** (los productos de su receta) y **almacenes** (lo que les entra y sus filtros). Siguen por cintas, divisores (con su filtro y prioridad) y clasificadores (con su filtro; hacia una máquina solo cogen lo que pide su receta). Con eso dice a qué máquinas les falta algo y qué cintas mezclan productos. El editor lo muestra en el panel (✓/✗ en cada entrada de la receta, «Lleva» en las cintas, lista «Comprobación» del blueprint) y con «!» en el plano; `node tools/bp.js check` lo imprime.
+
 ### Ritmos y potencia
 
 `get(i)` trae además, en las máquinas con receta, `rates`: `{ speed, base, cycle, in, out }` (tiempo de la receta, multiplicador de velocidad del edificio, segundos por ciclo y objetos por minuto), y en los edificios que gastan o generan electricidad, `power`: `{ work, idle }` en kW (negativo = genera). En estaciones y distribuidor, `work` es su potencia de carga configurada.
@@ -136,7 +141,7 @@ La lista completa está en `DSP.catalog()`.
 ```bash
 node tools/bp.js decode BP.txt  bp.json     # blueprint → JSON
 node tools/bp.js encode bp.json BP.txt      # JSON → blueprint (hash recalculado)
-node tools/bp.js check  BP.txt              # hash, choques, clasificadores sueltos (código de salida 2 si hay problemas)
+node tools/bp.js check  BP.txt              # hash, choques, clasificadores sueltos (código de salida 2 si hay problemas) y suministro
 node tools/bp.js info   BP.txt              # resumen por tipo de edificio, balance por minuto y potencia
 ```
 
