@@ -2158,7 +2158,9 @@
         <h4>Conexión</h4>
         ${field('Desde', endLabel(b.inputObjIdx, b.inputFromSlot))}
         ${field('Hasta', endLabel(b.outputObjIdx, b.outputToSlot))}
-        ${field('Longitud', `${len} casilla${len > 1 ? 's' : ''}`)}`;
+        ${field('Longitud', `${len} casilla${len > 1 ? 's' : ''}`)}
+        ${field('Capacidad', `<b>${fmtRate(RT.sorter(b))}/min</b> <span class="muted small">(${String(RT.SORTER_SPEED[b.itemId] || 0).replace('.', ',')} viajes/s por casilla ÷ ${len})</span>`)}
+        ${(() => { const mv = S.flow && S.flow.moves.get(idx); return mv && mv.size ? field('Mueve', [...mv].map((id) => `<span class="carry" title="${esc(IT.itemName(id))}">${itemIcon(id, 20)}<span>${esc(IT.itemName(id))}</span></span>`).join(' ')) : ''; })()}`;
     } else {
       const g = IT.RECIPE_GROUP[b.itemId];
       const below = b.inputObjIdx >= 0 && bs[b.inputObjIdx] && !isBelt(bs[b.inputObjIdx]) && !isSorter(bs[b.inputObjIdx]) &&

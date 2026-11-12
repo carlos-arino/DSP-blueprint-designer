@@ -4,11 +4,21 @@
 //   DSPRates.machine(b)  → { recipe, speed, cycle (s), in: [[objeto, /min]], out: [[objeto, /min]] } o null
 //   DSPRates.power(b)    → { work, idle } en kW (negativo = genera) o null
 //   DSPRates.totals(lista) → { items: [[objeto, entra/min, sale/min]], machines, work, idle, gen, notes }
+//   DSPRates.sorter(b)   → objetos/min que puede mover un clasificador (viajes/s por casilla × 60 / casillas)
 //
 // Supone las máquinas trabajando sin parar y sin proliferador. El fraccionador no entra: su ritmo depende
 // de la velocidad de la cinta (1 % de lo que pasa).
 (function (root) {
   const R = root.DSPRecipes || {}, M = root.DSPMachines || {}, P = root.DSPProps;
+  // Viajes por segundo y casilla (wiki: Mk.I 1,5; Mk.II y Mk.III más rápidos en la misma proporción que su
+  // consumo, 18/36/72 kW). El apilador (144 kW) no viene en la wiki: 12 por la misma regla, sin comprobar.
+  const SORTER_SPEED = { 2011: 1.5, 2012: 3, 2013: 6, 2014: 12 };
+  // 1 casilla: Mk.I 90/min · 2 casillas: 45/min · 3 casillas: 30/min
+  function sorter(b) {
+    const v = SORTER_SPEED[b.itemId]; if (!v) return 0;
+    const len = Math.max(1, Math.min(3, (b.parameters && b.parameters[0]) || 1));
+    return v * 60 / len;
+  }
 
   function machine(b) {
     const r = b.recipeId && R[b.recipeId];
@@ -46,6 +56,6 @@
     return { items: rows, machines, work, idle, gen, notes };
   }
 
-  root.DSPRates = { machine, power, totals };
+  root.DSPRates = { machine, power, totals, sorter, SORTER_SPEED };
   if (typeof module !== 'undefined') module.exports = root.DSPRates;
 })(typeof window !== 'undefined' ? window : globalThis);

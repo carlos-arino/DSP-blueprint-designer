@@ -4,6 +4,7 @@
 //   DSPFlow.analyze(buildings) → {
 //     items:    Map(índice → Set de objetos) en cintas, almacenes y estaciones
 //     supplied: Map(índice de máquina → Set de objetos que le llegan)
+//     moves:    Map(índice de clasificador → Set de objetos que mueve)
 //     issues:   [{ level: 'error' | 'warn', kind, i, msg, items }]
 //   }
 //
@@ -12,7 +13,8 @@
 // y monitores de tráfico en modo «generar». Un monitor en modo «consumir» retira de la cinta lo filtrado (o todo):
 // lo que le llega queda en sinks.
 (function (root) {
-  const IT = root.DSPItems, R = root.DSPRecipes || {}, P = root.DSPProps;
+  const IT = root.DSPItems, R = root.DSPRecipes || {}, P = root.DSPProps, RT = root.DSPRates;
+  const fmt = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
   const isBelt = (b) => b && b.itemId >= 2001 && b.itemId <= 2003;
   const isSorter = (b) => b && b.itemId >= 2011 && b.itemId <= 2014;
   const DEPOT = new Set([2101, 2102, 2106]);
@@ -21,7 +23,7 @@
   const names = (s) => [...s].map(name).join(', ');
 
   function analyze(bs) {
-    const items = new Map(), supplied = new Map(), sinks = new Map(), issues = [];
+    const items = new Map(), supplied = new Map(), sinks = new Map(), moves = new Map(), issues = [];
     const get = (m, i) => { if (!m.has(i)) m.set(i, new Set()); return m.get(i); };
     let changed = true;
     const addAll = (m, i, src) => { const s = get(m, i); for (const x of src) if (x && !s.has(x)) { s.add(x); changed = true; } };
@@ -98,6 +100,7 @@
           else after(i);
         } else if (isSorter(b)) {
           const got = take(b), dst = bs[b.outputObjIdx];
+          addAll(moves, i, got);
           if (!dst) return;
           if (isBelt(dst)) addAll(items, b.outputObjIdx, got);
           else if (DEPOT.has(dst.itemId)) addAll(items, base(b.outputObjIdx), got);
@@ -126,6 +129,19 @@
         if (miss.length) issues.push({ level: 'error', kind: 'missing', i, msg: `Le falta ${names(miss)}`, items: miss });
         const outSorters = bs.some((s) => isSorter(s) && s.inputObjIdx === i);
         if (!outSorters) issues.push({ level: 'warn', kind: 'noout', i, msg: 'Nadie saca lo que fabrica', items: r.out.map(([id]) => id) });
+        // ¿dan abasto los clasificadores? (lo que pide o fabrica la máquina por minuto contra lo que pueden mover)
+        const m = RT && RT.machine(b);
+        if (m) {
+          const cap = (list, id) => list.filter((s) => get(moves, bs.indexOf(s)).has(id)).reduce((a, s) => a + RT.sorter(s), 0);
+          const ins = bs.filter((s) => isSorter(s) && s.outputObjIdx === i), outs = bs.filter((s) => isSorter(s) && s.inputObjIdx === i);
+          const slow = (rows, list, word) => rows.forEach(([id, need]) => {
+            const c = cap(list, id);
+            if (c > 0 && c + 1e-6 < need) issues.push({ level: 'warn', kind: 'sorter', i, items: [id],
+              msg: `Los clasificadores ${word} ${name(id)} mueven ${fmt(c)}/min y hacen falta ${fmt(need)}/min (la máquina va al ${Math.floor(c / need * 100)} %)` });
+          });
+          slow(m.in, ins, 'que le traen');
+          if (outSorters) slow(m.out, outs, 'que sacan');
+        }
       }
       if (P && P.STATION_SLOTS[b.itemId]) {
         const p = P.read(b), have = new Set(p.slots.map((s) => s.item).filter(Boolean));
@@ -146,7 +162,7 @@
       const label = b.parameters && b.parameters[0];
       issues.push({ level: 'warn', kind: 'mix', i, msg: `Mezcla ${names(s)}${label ? ` (etiqueta: ${name(label)})` : ''}`, items: [...s] });
     });
-    return { items, supplied, sinks, issues };
+    return { items, supplied, sinks, moves, issues };
   }
 
   root.DSPFlow = { analyze };
