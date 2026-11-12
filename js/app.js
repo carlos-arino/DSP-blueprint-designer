@@ -2338,12 +2338,14 @@
     const full = ms.length - slow.length;
     const rows = slow.slice(0, 40).map(([i, m]) => `<div class="issue ${m.r < 0.01 ? 'error' : 'warn'}"><span class="lv">${Math.floor(m.r * 100)}%</span><span><span class="link" data-goto="${i}">${esc(IT.buildingInfo(bs[i].itemId).name)} #${i}</span>: ${esc(reasonOf(m))}</span></div>`).join('');
     const jams = sm.jams.slice(0, 10).map((j) => `<div class="issue warn"><span class="lv">!</span><span><span class="link" data-goto="${j.i}">${t('sim.jam', { i: j.i })}</span>: ${esc(t('sim.jamMsg', { rate: fmtRate(j.rate), item: IT.itemName(j.item) }))}</span></div>`).join('');
+    // distribuidores que ofrecen pero a los que nunca les sobra nada en el almacén
+    const idle = (sm.offers || []).filter((o) => o.rate < 0.01).slice(0, 10).map((o) => `<div class="issue warn"><span class="lv">!</span><span><span class="link" data-goto="${o.i}">${esc(IT.buildingInfo(bs[o.i].itemId).name)} #${o.i}</span>: ${esc(t(o.inflow > 0.01 ? 'sim.offerIdle' : 'sim.offerEmpty', { item: IT.itemName(o.item), rate: fmtRate(o.inflow) }))}</span></div>`).join('');
     const none = (txt) => `<p class="muted small">${txt}</p>`;
     return `<hr class="sep"><h3>${t('sim.title')}</h3>
       <p class="muted small">${t('sim.note')}</p>
       <label class="pcheck"><input type="checkbox" id="openEnds"${S.openEnds ? ' checked' : ''}> ${t('sim.openEnds')}</label>
       ${ms.length ? `<p class="small"><span class="ok-text">${t('sim.machines', { full, n: ms.length })}</span>${slow.length ? ` · <span class="warn-text">${t('sim.below', { n: slow.length })}</span>` : ''}</p>${rows}` : ''}
-      ${jams}
+      ${jams}${idle}
       ${Object.keys(inn).length ? `<div class="muted small">${t('sim.in')}</div>${itemList(inn)}` : none(t('sim.noIn'))}
       ${Object.keys(out).length ? `<div class="muted small">${t('sim.out')}</div>${itemList(out)}` : none(t('sim.noOut'))}
       ${sm.converged ? '' : `<p class="warn-text small">${t('sim.notConverged', { n: sm.iterations })}</p>`}`;
