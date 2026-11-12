@@ -1,138 +1,154 @@
 # DSP Blueprint Designer
 
-Editor web de blueprints de **Dyson Sphere Program**. Sin dependencias ni compilación.
+**English** · [Español](README.es.md)
 
-**Úsalo en línea: https://carlos-arino.github.io/DSP-blueprint-designer/** (Chrome o Edge para abrir y guardar directamente en la carpeta del juego).
+Web editor for **Dyson Sphere Program** blueprints. No dependencies, no build step.
 
-## API para IA y scripts
+**Use it online: https://carlos-arino.github.io/DSP-blueprint-designer/** (Chrome or Edge to open and save straight into the game's folder).
 
-Ver **[API.md](API.md)**: `window.DSP` en el editor (colocar, trazar cintas, clasificadores, recetas, mover, exportar…) y `tools/bp.js` en la línea de comandos (blueprint ↔ JSON, comprobar choques).
+The editor is in English and Spanish: it follows your browser language, and the selector in the top right corner changes it (the choice is remembered).
 
-## Uso
+## API for AIs and scripts
 
-Abre `index.html` en Chrome o Edge (doble clic), o sirve la carpeta:
+See **[API.md](API.md)**: `window.DSP` in the editor (place buildings, draw belts, sorters, recipes, move, export…) and `tools/bp.js` on the command line (blueprint ↔ JSON, collision and supply checks, flow simulation).
+
+## Usage
+
+Open `index.html` in Chrome or Edge (double click), or serve the folder:
 
 ```bash
 python tools/serve.py
 ```
 
-- **Abrir carpeta**: elige `Documentos\Dyson Sphere Program\Blueprint`. Así puedes abrir y guardar directamente en la carpeta del juego.
-- **Pegar código** o pulsar Ctrl+V con un código `BLUEPRINT:` en el portapapeles.
-- **Copiar código**: copia el resultado para pegarlo en el juego.
+- **Open folder**: choose `Documents\Dyson Sphere Program\Blueprint`. Then you can open and save straight into the game's folder.
+- **Paste code**, or press Ctrl+V with a `BLUEPRINT:` code in the clipboard.
+- **Copy code**: copies the result to paste it in the game.
 
-### Atajos
+### Shortcuts
 
-| Tecla | Acción |
+| Key | Action |
 |---|---|
-| Clic / Ctrl+clic / arrastrar en vacío | Seleccionar / añadir / selección por caja |
-| Mayús+clic en un edificio (y arrastrar sin soltar) | Copiarlo con su receta y sus clasificadores; arrastrando se ponen copias en fila (las que chocan se saltan) |
-| Arrastrar selección, flechas (Mayús = 5) | Mover. Los clasificadores enganchados van con su edificio. Las cintas no se estiran: las conexiones con lo que no se mueve se cortan, y al soltar una cinta encima de otra del mismo nivel la de debajo desaparece y la movida ocupa su sitio (si el sentido es contrario, no deja). Los extremos libres que se miran se vuelven a enganchar |
-| Doble clic | Toda la línea de cinta, o todos los edificios iguales |
-| R | Girar 90° (selección o fantasma al colocar). Con la herramienta de cinta: el codo en diagonal empieza por el otro lado |
-| + / − | Altura de la cinta (también a mitad de trazado: sube o baja en esa casilla) |
-| E | Elegir receta de lo seleccionado |
-| Supr | Borrar lo seleccionado |
-| X+clic | Borrar lo que hay bajo el cursor |
-| Mayús+X+clic | Borrar toda la cinta conectada del mismo tipo |
-| Ctrl+C / X / V / D | Copiar / cortar / pegar / duplicar |
-| Ctrl+Z / Y | Deshacer / rehacer |
-| Ctrl+S | Guardar |
-| F | Encuadrar |
-| Clic derecho | Igual que Esc (cancelar herramienta / deseleccionar) |
-| Arrastrar con botón derecho/central o Espacio, rueda | Desplazar, zoom |
+| Click / Ctrl+click / drag on empty space | Select / add / box select |
+| Shift+click on a building (and drag without releasing) | Copy it with its recipe and sorters; dragging places copies in a row (the ones that collide are skipped) |
+| Drag the selection, arrow keys (Shift = 5) | Move. Attached sorters go with their building. Belts don't stretch: connections to what doesn't move are cut, and dropping a belt on another one at the same level replaces the one below (not allowed if they run in opposite directions). Free ends that face each other are connected again |
+| Double click | The whole belt line, or all identical buildings |
+| R | Rotate 90° (selection, or the ghost while placing). With the belt tool: the diagonal bend starts on the other side |
+| + / − | Belt height (also halfway through drawing: it goes up or down in that cell) |
+| E | Choose the recipe of the selection |
+| Del | Delete the selection |
+| X+click | Delete what is under the cursor |
+| Shift+X+click | Delete the whole connected belt of the same type |
+| Ctrl+C / X / V / D | Copy / cut / paste / duplicate |
+| Ctrl+Z / Y | Undo / redo |
+| Ctrl+S | Save |
+| F | Fit to view |
+| Right click | Same as Esc (cancel the tool / deselect) |
+| Drag with the right/middle button or Space, wheel | Pan, zoom |
 
-La paleta sigue los grupos del menú de construcción del juego (Power, Collecting, Logistics, Storage, Production, Transportation, Defense, Research & Dyson Sphere) con el nombre en inglés y el icono de la wiki (`icons/buildings/`). Clic en un grupo para plegarlo o desplegarlo; el buscador acepta inglés, español o número. Las ensambladoras Mk.I/II/III se pintan en amarillo, verde y azul, como cintas y clasificadores; el clasificador apilador, en blanco. Recompositora, hornos de plano y negentropía, planta química cuántica y laboratorio autoevolutivo usan la geometría de su equivalente (modelos de `huww98/dsp_blueprint_editor`).
+The palette follows the groups of the game's build menu (Power, Collecting, Logistics, Storage, Production, Transportation, Defense, Research & Dyson Sphere) with the wiki icon of each building (`icons/buildings/`). Click on a group to fold or unfold it; the search box accepts the name or the item number. Assembling machines Mk.I/II/III are drawn in yellow, green and blue, like belts and sorters; the pile sorter in white. Re-composing assembler, plane and negentropy smelters, quantum chemical plant and self-evolution lab use the geometry of their equivalent (models from `huww98/dsp_blueprint_editor`).
 
-En la paleta, las cintas activan la herramienta de trazado (arrastra para hacer una línea en L, se conecta a cintas existentes). El resto de edificios se colocan con clic.
+In the palette, belts start the drawing tool (drag to make an L-shaped line; it connects to existing belts). Other buildings are placed with a click.
 
-El panel de la derecha muestra lo útil de cada cosa: receta (con dibujo) en edificios de producción, con sus entradas y salidas por ciclo y por minuto, el tiempo del ciclo con el multiplicador de velocidad de la máquina (ensambladora Mk.I x0,75, Mk.II x1, Mk.III x1,5…) y el consumo trabajando y en reposo; la comprobación de suministro (si a cada máquina le llega lo que pide su receta por cintas con etiqueta, salidas de estaciones, almacenes, salidas de otras máquinas o monitores de tráfico que generan en modo sandbox, si alguna cinta mezcla productos y si los clasificadores dan abasto: un Mk.I mueve 90/min con 1 casilla, 45 con 2 y 30 con 3), marcada también con «!» en el plano; la simulación de flujo en régimen estable (cuánto pasa por cada cinta y clasificador, a qué porcentaje trabaja cada máquina y por qué, y qué entra y sale del blueprint, con monitores de tráfico en modo sandbox como generadores y consumidores), con el porcentaje en el plano; sin nada seleccionado o con varios edificios, el balance por minuto (lo que entra, sale y sobra o falta de cada objeto) y la potencia total; tipo Mk.I/II/III e icono en cintas; tipo, filtro, origen, destino y longitud en clasificadores; variante, prioridades y filtro en divisores; productos, puertos de salida y ajustes en estaciones; casillas y filtros en almacenes; modo del distribuidor y del receptor de rayos; clasificadores y puertos en uso. En el lienzo se ven con su icono la etiqueta de las cintas, el filtro de clasificadores y divisores y lo que sale por cada puerto de las estaciones. Al dibujar una cinta que sale de una estación, se pregunta qué producto sale (como el selector del juego: «Nada», #1…#5 o las teclas 0–5). Igual al sacar un clasificador de un edificio cuya receta da varios productos (refinería, planta química, colisionador): se elige cuál coge o «Todo». Los datos crudos del blueprint (modelo, posición, huecos, parámetros) quedan plegados en «Avanzado».
+The right panel shows what matters for each thing:
 
-El botón **🧹 Limpiar** borra los clasificadores a los que les falta el inicio o el fin.
+- **Production buildings**: recipe (with its icon), inputs and outputs per cycle and per minute, cycle time with the machine's speed multiplier (assembler Mk.I x0.75, Mk.II x1, Mk.III x1.5…), and power use while working and idle.
+- **Supply check**: whether each machine gets what its recipe needs through labelled belts, station outputs, depots, other machines' outputs or traffic monitors generating in sandbox mode; whether a belt mixes products; and whether the sorters can keep up (a Mk.I moves 90/min over 1 cell, 45 over 2 and 30 over 3). Problems are also marked with «!» on the map.
+- **Flow simulation** in steady state: how much passes along each belt and sorter, at what percentage each machine works and why, and what goes in and out of the blueprint, with traffic monitors in sandbox mode as generators and consumers. The percentage is shown on the map.
+- With nothing selected, or several buildings: the **balance** per minute (what goes in, comes out, and what is left over or missing for each item) and total power.
+- Belts: tier Mk.I/II/III and icon. Sorters: tier, filter, source, destination and length. Splitters: variant, priorities and filter. Stations: products, output ports and settings. Depots: slots and filters. Logistics distributor and ray receiver: mode. Sorters and ports in use.
 
-## Sprites y geometría
+On the canvas you see, with their icons, belt labels, sorter and splitter filters, and what comes out of each station port. When you draw a belt out of a station, the editor asks which product comes out (like the game's selector: «None», #1…#5, or keys 0–5). The same happens when you pull a sorter out of a building whose recipe gives several products (refinery, chemical plant, collider): you choose which one it takes, or «All». The raw blueprint data (model, position, slots, parameters) is folded under «Advanced».
 
-- `js/geometry.js`: huella y huecos de clasificador de cada edificio, medidos en tus blueprints (cientos de clasificadores) y en `Ejemplos/pruebas`.
-- `sprites/` + `js/sprites.js`: imágenes recortadas de capturas del juego. Para sacarlas de una captura nueva:
+The **🧹 Clean up** button deletes the sorters that are missing their start or end.
+
+## Sprites and geometry
+
+- `js/geometry.js`: footprint and sorter slots of each building, measured in real blueprints (hundreds of sorters) and in `Ejemplos/pruebas`.
+- `sprites/` + `js/sprites.js`: images cut out from game screenshots. To get them from a new screenshot:
 
 ```bash
 python tools/sprites_from_screenshot.py Ejemplos/pruebas/edificios.txt Ejemplos/pruebas/edificios.png Ejemplos/pruebas/edificios.points.json
 ```
 
-El `.points.json` tiene al menos 4 puntos a ras de suelo (torres Tesla, divisores…) con su posición en el blueprint y su píxel en la captura. Con ellos se endereza la captura a vista cenital y se recorta cada edificio.
+The `.points.json` has at least 4 ground-level points (Tesla towers, splitters…) with their position in the blueprint and their pixel in the screenshot. With them the screenshot is straightened to a top-down view and each building is cut out.
 
-## Alturas
+## Heights
 
-- Las cintas tienen nivel (`z`): 0 suelo, 1 elevada… Las elevadas se dibujan encima, más estrechas y con borde claro. Una subida o bajada son dos cintas en la misma casilla, marcadas con ▲/▼ y el nivel de destino.
-- El selector **Altura** de la barra (o RePág/AvPág) elige el nivel: las cintas nuevas se trazan a ese nivel y lo demás se atenúa. Con "todas" se trazan en el suelo.
-- **Subir o bajar:** mientras arrastras una cinta, pulsa **+** para subir un nivel o **−** para bajar (también RePág/AvPág), y sigue arrastrando. En esa casilla quedan dos cintas, una por nivel, como en el juego. También vale empezar una cinta sobre el final de otra de distinto nivel, o terminarla sobre su principio.
+- Belts have a level (`z`): 0 ground, 1 raised… Raised belts are drawn on top, narrower and with a light border. A ramp up or down is two belts in the same cell, marked with ▲/▼ and the target level.
+- The **Level** selector in the toolbar (or PgUp/PgDn) chooses the level: new belts are drawn at that level and the rest is dimmed. With "all" they are drawn on the ground.
+- **Going up or down:** while dragging a belt, press **+** to go up one level or **−** to go down (also PgUp/PgDn), and keep dragging. That cell ends up with two belts, one per level, as in the game. You can also start a belt on the end of another one at a different level, or end it on its start.
 
-## Divisor
+## Splitter
 
-Ocupa 1 casilla y tiene 3 variantes (modelo), con Tab al colocarlo o con el desplegable del inspector:
+It takes 1 cell and has 3 variants (model), switched with Tab while placing it or with the inspector:
 
-| Modelo | Puertos (hueco: lado, nivel) |
+| Model | Ports (slot: side, level) |
 |---|---|
-| 38 | 0 N, 1 E, 2 S, 3 O, todos en el suelo |
-| 39 | 0 N suelo, 1 N elevado, 2 S suelo, 3 S elevado |
-| 40 | 0 N elevado, 1 E suelo, 2 S elevado, 3 O suelo |
+| 38 | 0 N, 1 E, 2 S, 3 W, all on the ground |
+| 39 | 0 N ground, 1 N raised, 2 S ground, 3 S raised |
+| 40 | 0 N raised, 1 E ground, 2 S raised, 3 W ground |
 
-Los puertos 1 y 3 del 38 y el 0 del 40 están deducidos, no medidos.
+Ports 1 and 3 of model 38 and port 0 of model 40 are deduced, not measured.
 
-## Puertos de cinta
+## Belt ports
 
-Los puntos de entrada/salida de cinta se ven siempre (tenues; resaltados con la herramienta de cinta): flechas en los puertos y una franja discontinua en los carriles de las torretas (fila de munición). Con la herramienta de cinta, los puertos se ven como flechas (azules en el suelo, blancas elevadas; atenuadas si no son del nivel actual). Una cinta que empieza o acaba en la casilla de un puerto, en su sentido, se engancha a él y su último tramo queda en la posición exacta del puerto (`js/geometry.js`, `DSPBeltPorts`):
+Belt input/output points are always shown (faint; highlighted with the belt tool): arrows on the ports and a dashed strip on turret lanes (the ammo row). With the belt tool, ports are shown as arrows (blue on the ground, white when raised; dimmed if they are not on the current level). A belt that starts or ends on a port's cell, in its direction, attaches to it, and its last segment sits at the exact port position (`js/geometry.js`, `DSPBeltPorts`):
 
-| Edificio | Puertos |
+| Building | Ports |
 |---|---|
-| Divisor, apilador | a 0,2 del centro |
-| Estación planetaria / interestelar | 12, a 2,15 del centro (3 por lado, a −1, 0, +1) |
-| Fraccionador | norte, este y oeste, a 1,1 |
-| Intercambiador de energía | 4, a 2,3 |
-| Receptor de rayos | norte y sur, a 1,12 |
+| Splitter, automatic piler | 0.2 from the center |
+| Planetary / interstellar logistics station | 12, 2.15 from the center (3 per side, at −1, 0, +1) |
+| Fractionator | north, east and west, at 1.1 |
+| Energy exchanger | 4, at 2.3 |
+| Ray receiver | north and south, at 1.12 |
 
-## Apilado
+## Stacking
 
-Al colocar un almacén, tanque, laboratorio o distribuidor encima de otro compatible, se apila solo (`DSPStack`): almacén Mk.I sobre almacén o divisor (+2), Mk.II (+3), tanque (+3), laboratorio (+3) y distribuidor sobre almacén (+1,87). El de arriba apunta al de abajo como entrada. Las pilas llevan una insignia ×N.
+When you place a depot, tank, lab or logistics distributor on top of a compatible building, it stacks automatically (`DSPStack`): depot Mk.I on a depot or splitter (+2), Mk.II (+3), tank (+3), lab (+3) and distributor on a depot (+1.87). The upper one points to the lower one as its input. Stacks carry a ×N badge.
 
-## Formas exactas
+## Exact shapes
 
-`node tools/gen_shapes.js --show` saca la forma de cada edificio que en `Ejemplos/pruebas/especiales.txt` está rodeado con un anillo de cintas (casillas a las que no se llega desde fuera) y la guarda en `js/shapes.js`. Esas formas se usan para dibujar y para los choques (rombo del generador de escudo, cruz de la torre de señal, 4×7 de las centrales…). Si el anillo tiene un hueco, el edificio se queda con su rectángulo.
+`node tools/gen_shapes.js --show` extracts the shape of each building that is surrounded by a ring of belts in `Ejemplos/pruebas/especiales.txt` (cells that can't be reached from outside) and saves it in `js/shapes.js`. Those shapes are used for drawing and for collisions (the shield generator's diamond, the signal tower's cross, the 4×7 of the power plants…). If the ring has a gap, the building keeps its rectangle.
 
-## Plantillas
+## Templates
 
-`node tools/gen_templates.js` regenera `js/templates.js` (modelo, parámetros y huecos por defecto de cada edificio) a partir de `Ejemplos/`. Las variantes (ensambladoras Mk.II/III y recompositora, hornos de plano y negentropía, planta química cuántica, laboratorio autoevolutivo, cinta Mk.III y clasificador apilador) copian a su equivalente con su propio modelo.
+`node tools/gen_templates.js` regenerates `js/templates.js` (default model, parameters and slots of each building) from `Ejemplos/`. The variants (assemblers Mk.II/III and re-composing assembler, plane and negentropy smelters, quantum chemical plant, self-evolution lab, belt Mk.III and pile sorter) copy their equivalent with their own model.
 
-## Recetas
+## Recipes
 
-El selector de receta del inspector muestra el dibujo de cada una, filtrado por edificio; el buscador acepta el nombre en español o en inglés. Los datos están en `js/recipes.js` y los dibujos en `icons/recipes/` (de la wiki de Fandom). Los iconos de objetos (filtros, etiquetas de cinta, productos de estaciones) están en `icons/items/`, sacados de la página [Components](https://dyson-sphere-program.fandom.com/wiki/Components) de la wiki. Se generan con `python tools/gen_recipes.py`. La wiki no deja descargar los iconos por script: los que falten se listan en `tools/missing_icons.json` y hay que bajarlos desde el navegador.
+The inspector's recipe picker shows each recipe's icon, filtered by building; the search box accepts the English or Spanish name. The data is in `js/recipes.js` and the icons in `icons/recipes/` (from the Fandom wiki). Item icons (filters, belt labels, station products) are in `icons/items/`, taken from the wiki's [Components](https://dyson-sphere-program.fandom.com/wiki/Components) page. They are generated with `python tools/gen_recipes.py`. The wiki doesn't allow downloading icons from a script: missing ones are listed in `tools/missing_icons.json` and have to be downloaded from the browser.
 
-## Choques
+## Collisions
 
-`js/collision.js` da a cada edificio un rectángulo y no deja colocar, mover, pegar ni trazar nada que choque (la acción se deshace y avisa; el fantasma sale en rojo antes). Si el blueprint abierto ya trae choques, se marcan pero no impiden seguir. Es aproximado:
+`js/collision.js` gives each building a rectangle and doesn't let you place, move, paste or draw anything that collides (the action is undone with a warning; the ghost turns red before that). If the opened blueprint already has collisions, they are marked but don't block you. It is approximate:
 
-- los clasificadores no chocan; las cintas no chocan entre sí;
-- divisor, monitor, apilador y distribuidor admiten cintas debajo;
-- los edificios son altos: una cinta elevada también choca con ellos, salvo por un carril de su nivel;
-- pulverizador: la cinta del producto lo recorre a nivel 0 por el centro (entra por los lados estrechos) y la del proliferador lo cruza a nivel 1 por una sola fila, a una casilla del centro; por ningún otro sitio;
-- en estaciones, intercambiador de energía, fraccionador, receptor de rayos, torretas (también la de plasma SR) y torre de interferencias la cinta solo puede entrar por sus carriles de entrada/salida (en las torretas, la fila central, por donde entra la munición);
-- piezas a distinta altura (almacén sobre divisor) no chocan;
-- dos ensambladoras necesitan un hueco de 1 entre ellas (cabe una Tesla);
-- estaciones: base de 7×7 con las esquinas recortadas (cabe una Tesla en cada esquina); las cintas solo entran por los carriles de los puertos.
+- sorters don't collide; belts don't collide with each other;
+- splitter, traffic monitor, automatic piler and logistics distributor allow belts underneath;
+- buildings are tall: a raised belt also collides with them, except along a lane at its level;
+- spray coater: the product belt runs through it at level 0 along the center (entering through the narrow sides) and the proliferator belt crosses it at level 1 along a single row, one cell from the center; nowhere else;
+- on stations, energy exchanger, fractionator, ray receiver, turrets (including the SR plasma turret) and jammer tower, belts can only enter through their input/output lanes (on turrets, the central row where ammo goes in);
+- pieces at different heights (a depot on a splitter) don't collide;
+- two assembling machines need a gap of 1 between them (a Tesla tower fits);
+- stations: 7×7 base with cut corners (a Tesla tower fits in each corner); belts only enter through the port lanes.
 
-`node test/collisions.js` comprueba que ningún ejemplo de `Ejemplos/` da avisos, más unos casos sintéticos.
+`node test/collisions.js` checks that no example in `Ejemplos/` gives warnings, plus some synthetic cases.
 
-## Clasificadores
+## Sorters
 
-Elige un clasificador en la paleta y arrastra desde el origen (una cinta o un hueco) hasta el destino. Los huecos se ven como puntos (rellenos = ocupados). Horno y ensambladora tienen 6: 3 al norte y 3 al sur. Se rellenan solos el hueco, la longitud (1–3) y el desplazamiento sobre la cinta (`floor(20 × distancia a lo largo de la cinta)`).
+Pick a sorter in the palette and drag from the source (a belt or a slot) to the destination. Slots are shown as dots (filled = taken). Smelter and assembler have 6: 3 on the north side and 3 on the south. The slot, the length (1–3) and the offset along the belt (`floor(20 × distance along the belt)`) are filled in automatically.
 
-## Formato (resumen)
+## Format (summary)
 
 ```
-BLUEPRINT:<cabecera>"<base64(gzip(binario))>"<MD5F>
+BLUEPRINT:<header>"<base64(gzip(binary))>"<MD5F>
 ```
 
-- **MD5F**: MD5 con estado inicial `B=0xEFDCAB89`, `D=0x10325746` y 7 constantes K modificadas (`js/codec.js`). Se calcula sobre todo el texto hasta la última comilla.
-- **Cabecera** (0.10.x): `1,layout,icono×5,0,ticks,versión,nombre,,,,descripción` (textos urlencoded).
-- **Binario**: meta (7×int32), áreas, edificios. En 0.10.x cada edificio empieza por `-102` y el número de floats de posición depende del tipo: cintas 5 (x,y,z,yaw,tilt), clasificadores 12 (dos posiciones completas), resto 4 (x,y,z,yaw). Después: conexiones, huecos, receta, filtro, parámetros y un int32 extra. Al final del binario van 5 bytes (`01 00000000`).
+- **MD5F**: MD5 with initial state `B=0xEFDCAB89`, `D=0x10325746` and 7 modified K constants (`js/codec.js`). It is computed over the whole text up to the last quote.
+- **Header** (0.10.x): `1,layout,icon×5,0,ticks,version,name,,,,description` (texts urlencoded).
+- **Binary**: meta (7×int32), areas, buildings. In 0.10.x each building starts with `-102` and the number of position floats depends on the type: belts 5 (x,y,z,yaw,tilt), sorters 12 (two full positions), the rest 4 (x,y,z,yaw). Then: connections, slots, recipe, filter, parameters and an extra int32. The binary ends with 5 bytes (`01 00000000`).
 
-`node test/roundtrip.js` comprueba que todos los ejemplos de `Ejemplos/` se decodifican y se vuelven a codificar byte a byte.
+`node test/roundtrip.js` checks that every example in `Ejemplos/` decodes and encodes back byte for byte.
+
+## Translations
+
+Interface texts are in `js/i18n.js` (an `en` and an `es` dictionary with the same keys). Building, item and recipe names come from `js/items.js` and `js/recipes.js`, which keep both languages. To add a language, add a dictionary with the same keys (missing keys fall back to English) and the names.

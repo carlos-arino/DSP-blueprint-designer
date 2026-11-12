@@ -50,8 +50,9 @@
       const p = power(b);
       if (p) { if (p.work < 0) gen -= p.work; else { work += p.work; idle += p.idle; } }
     }
-    if (fract) notes.push(`${fract} fraccionador${fract > 1 ? 'es' : ''} sin contar (dependen de la cinta)`);
-    if (noRecipe) notes.push(`${noRecipe} sin receta`);
+    const t = (k, v) => (root.DSPI18n ? root.DSPI18n.t(k, v) : k);
+    if (fract) notes.push(t('rates.fract', { n: fract }));
+    if (noRecipe) notes.push(t('rates.noRecipe', { n: noRecipe }));
     const rows = [...items].map(([id, [i, o]]) => [id, i, o]).sort((a, b) => (b[2] - b[1]) - (a[2] - a[1]));
     return { items: rows, machines, work, idle, gen, notes };
   }
