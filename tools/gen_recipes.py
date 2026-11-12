@@ -64,6 +64,7 @@ def main():
         # nombre: el de la receta si lo conocemos en español; si es la receta normal del producto, el del producto
         name = es_recipe.get(rid) or (es_item.get(p) if en_name == en_prod else None) or en_name
         entry = {'name': name, 'en': en_name, 'group': group, 'product': p}
+        if len(products) > 1: entry['products'] = products   # varios productos (refinería, planta química…)
         icon = next((f'icons/recipes/{rid}.{e}' for e in ('png', 'webp') if os.path.exists(os.path.join(ROOT, 'icons', 'recipes', f'{rid}.{e}'))), None)
         if icon: entry['icon'] = icon
         else: missing.append({'id': rid, 'names': list(dict.fromkeys([en_name.strip(' -'), en_prod]))})

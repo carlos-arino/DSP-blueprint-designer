@@ -1298,30 +1298,37 @@
   function setPortOut(st, k, v) {
     pushUndo(); PR.write(st, { ports: Object.assign([], { [k]: { dir: 1, storage: v } }) }); refresh();
   }
-  function closePortChooser() { const p = $('portPop'); if (p) p.remove(); }
-  function openPortChooser(st, k) {
+  // Ventana flotante junto al cursor con botones data-v (como el selector de filtro del juego).
+  // La elección va con lo que se acaba de colocar (mismo paso de deshacer). keyVal(n) traduce la tecla n a un data-v.
+  let chooserKey = null;
+  function closePortChooser() { const p = $('portPop'); if (p) p.remove(); chooserKey = null; }
+  function openChooser(title, tiles, sub, onPick, keyVal) {
     closePortChooser();
     const pop = document.createElement('div');
     pop.id = 'portPop';
-    pop.innerHTML = `<div class="ptitle">¿Qué sale por esta cinta?</div>${portChoices(st, k)}<div class="muted small">${esc(IT.itemName(st.itemId))} · puerto ${k} · Esc: nada</div>`;
+    pop.innerHTML = `<div class="ptitle">${esc(title)}</div>${tiles}<div class="muted small">${sub}</div>`;
     $('canvasWrap').appendChild(pop);
     const wr = $('canvasWrap').getBoundingClientRect();
     pop.style.left = Math.max(4, Math.min(S.mouse.sx + 12, wr.width - pop.offsetWidth - 4)) + 'px';
     pop.style.top = Math.max(4, Math.min(S.mouse.sy + 12, wr.height - pop.offsetHeight - 4)) + 'px';
     pop.addEventListener('mousedown', (ev) => ev.stopPropagation());
     pop.addEventListener('click', (ev) => {
-      const t = ev.target.closest('[data-act="portOut"]'); if (!t) return;
-      // la elección va con la cinta recién dibujada (mismo paso de deshacer)
-      PR.write(st, { ports: Object.assign([], { [k]: { dir: 1, storage: +t.dataset.v } }) });
-      closePortChooser(); refresh();
+      const t = ev.target.closest('[data-v]'); if (!t) return;
+      onPick(+t.dataset.v, t); closePortChooser(); refresh();
     });
+    chooserKey = keyVal || ((n) => n);
+  }
+  function openPortChooser(st, k) {
+    openChooser('¿Qué sale por esta cinta?', portChoices(st, k), `${esc(IT.itemName(st.itemId))} · puerto ${k} · Esc: nada`,
+      (v) => PR.write(st, { ports: Object.assign([], { [k]: { dir: 1, storage: v } }) }));
   }
   document.addEventListener('mousedown', (ev) => { const p = $('portPop'); if (p && !p.contains(ev.target)) closePortChooser(); });
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && $('portPop')) { ev.stopPropagation(); closePortChooser(); } }, true);
   // Teclas 0…5 con el selector abierto: elegir sin ratón
   document.addEventListener('keydown', (ev) => {
     const p = $('portPop'); if (!p || !/^[0-9]$/.test(ev.key)) return;
-    const t = p.querySelector(`[data-v="${ev.key}"]`); if (t) { ev.preventDefault(); ev.stopPropagation(); t.click(); }
+    const v = chooserKey ? chooserKey(+ev.key) : +ev.key, t = v === undefined ? null : p.querySelector(`[data-v="${v}"]`);
+    if (t) { ev.preventDefault(); ev.stopPropagation(); t.click(); }
   }, true);
 
   // ------------------------------------------------------------------ clasificadores
@@ -1476,6 +1483,16 @@
     s.index = bs.length; bs.push(s);
     S.sel = new Set([s]);
     refresh();
+    // sale de un edificio cuya receta da varios productos (refinería, planta química…): ¿cuál coge?
+    const rec = a.kind === 'slot' && ia.recipeId ? IT.RECIPE_INFO[ia.recipeId] : null;
+    if (rec && rec.products && rec.products.length > 1) openFilterChooser(s, ia, rec.products);
+  }
+  function openFilterChooser(sorter, from, products) {
+    const tile = (v, inner, title) => `<button type="button" class="otile" data-v="${v}" title="${esc(title)}">${inner}</button>`;
+    const tiles = `<div class="otiles">${tile(0, '<span class="onone">Todo</span>', 'Sin filtro: coge todos los productos')}${products.map((p, i) =>
+      tile(p, `${itemIcon(p, 30)}<sup>#${i + 1}</sup>`, `#${i + 1} ${IT.itemName(p)}`)).join('')}</div>`;
+    openChooser('¿Qué producto coge el clasificador?', tiles, `${esc(IT.itemName(from.itemId))} · ${esc(IT.RECIPE_INFO[from.recipeId].name)} · Esc: todo`,
+      (v, t) => { sorter.filterId = v; }, (i) => (i === 0 ? 0 : products[i - 1]));
   }
 
   // ------------------------------------------------------------------ transformaciones
