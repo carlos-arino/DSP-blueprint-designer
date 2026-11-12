@@ -25,7 +25,7 @@
     tool: 'select', placeItem: null, ghostRot: 0,
     clip: null, undo: [], redo: [], dirty: false,
     mouse: { sx: 0, sy: 0, wx: 0, wy: 0, inside: false }, drag: null, space: false,
-    templates: {}, showLabels: true, showLinks: false,
+    templates: {}, showLabels: true,
     showChecks: (() => { try { return localStorage.getItem('dspShowChecks') !== '0'; } catch (e) { return true; } })(),
     openEnds: (() => { try { return localStorage.getItem('dspOpenEnds') === '1'; } catch (e) { return false; } })(),
     level: 'all', splitModel: 39, beltFlip: false,
@@ -932,17 +932,6 @@
       drawHits(COL.find(moved, bs.filter((b) => !S.sel.has(b) && !moving.carry.has(b))));
     } else if (S.hits) {
       drawHits(S.hits);
-    }
-
-    if (S.showLinks) {
-      ctx.strokeStyle = 'rgba(79,195,247,.6)'; ctx.lineWidth = 1;
-      for (const b of bs) {
-        if (isBelt(b) || b.outputObjIdx < 0) continue;
-        const t = bs[b.outputObjIdx]; if (!t) continue;
-        const [ox1, oy1] = offsetOf(b), [ox2, oy2] = offsetOf(t);
-        const [ax, ay] = w2s((isSorter(b) ? b.x2 : b.x) + ox1, (isSorter(b) ? b.y2 : b.y) + oy1), [cx, cy] = w2s(t.x + ox2, t.y + oy2);
-        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(cx, cy); ctx.stroke();
-      }
     }
 
     // fantasmas
@@ -2295,8 +2284,7 @@
     const MAX = 40, rows = [...err, ...warn].slice(0, MAX).map(issueRow).join('');
     return `<hr class="sep"><h3>Comprobación</h3>
       <p class="muted small">Llega lo que pide cada receta por cintas con etiqueta, salidas de estaciones, almacenes, salidas de otras máquinas o monitores que generan.</p>
-      ${l.length ? `<p class="small"><span class="bad-text">${err.length} errores</span> · <span class="warn-text">${warn.length} avisos</span>${l.length > MAX ? ` (se muestran ${MAX})` : ''}</p>${rows}` : '<p class="ok-text small">✓ A todas las máquinas les llega lo que necesitan y no hay mezclas.</p>'}
-      <label class="pcheck"><input type="checkbox" id="showChecks"${S.showChecks ? ' checked' : ''}> Marcar los avisos en el plano</label>`;
+      ${l.length ? `<p class="small"><span class="bad-text">${err.length} errores</span> · <span class="warn-text">${warn.length} avisos</span>${l.length > MAX ? ` (se muestran ${MAX})` : ''}</p>${rows}` : '<p class="ok-text small">✓ A todas las máquinas les llega lo que necesitan y no hay mezclas.</p>'}`;
   }
   function carriesHTML(i) {
     const s = S.flow && S.flow.items.get(i);
@@ -2743,7 +2731,6 @@
     if (t.dataset.icon !== undefined) { pushUndo(); h.icons[+t.dataset.icon] = parseInt(t.value, 10) || 0; renderInspector(); return; }
     if (t.dataset.p) { propChange(t); return; }
     if (t.id === 'openEnds') { S.openEnds = t.checked; try { localStorage.setItem('dspOpenEnds', t.checked ? '1' : '0'); } catch (e) { /* sin almacenamiento */ } refresh(); return; }
-    if (t.id === 'showChecks') { S.showChecks = t.checked; try { localStorage.setItem('dspShowChecks', t.checked ? '1' : '0'); } catch (e) { /* sin almacenamiento */ } requestDraw(); return; }
     if (t.dataset.f) {
       const b = [...S.sel][0], f = t.dataset.f, v = parseFloat(t.value);
       if (!Number.isFinite(v)) return;
@@ -2800,7 +2787,12 @@
   $('btnCleanSorters').onclick = cleanSorters;
   $('levelSel').onchange = (e) => { setLevel(e.target.value === 'all' ? 'all' : +e.target.value); e.target.blur(); };
   $('chkLabels').onchange = (e) => { S.showLabels = e.target.checked; requestDraw(); };
-  $('chkLinks').onchange = (e) => { S.showLinks = e.target.checked; requestDraw(); };
+  $('chkChecks').checked = S.showChecks;
+  $('chkChecks').onchange = (e) => {
+    S.showChecks = e.target.checked;
+    try { localStorage.setItem('dspShowChecks', e.target.checked ? '1' : '0'); } catch (err) { /* sin almacenamiento */ }
+    requestDraw();
+  };
 
   $('fileInput').addEventListener('change', async (ev) => {
     const f = ev.target.files[0]; if (!f) return;
