@@ -125,6 +125,13 @@ El selector de receta del inspector muestra el dibujo de cada una, filtrado por 
 
 Elige un clasificador en la paleta y arrastra desde el origen (una cinta o un hueco) hasta el destino. Los huecos se ven como puntos (rellenos = ocupados). Horno y ensambladora tienen 6: 3 al norte y 3 al sur. Se rellenan solos el hueco, la longitud (1–3) y el desplazamiento sobre la cinta (`floor(20 × distancia a lo largo de la cinta)`).
 
+## Pendiente
+
+- **Proliferador:** la simulación, el balance y la comprobación no tienen en cuenta pulverizadores ni proliferador (ni productos extra ni aceleración, ni lo que se gasta de proliferador).
+- **Comparar la simulación con el juego** en sandbox, con monitores en la entrada y la salida.
+- **Sin comprobar:** velocidad del clasificador apilador (12 viajes/s por casilla, deducida de su consumo) y potencia de los generadores con combustible.
+- **Versión en inglés** del editor y de la documentación.
+
 ## Formato (resumen)
 
 ```
