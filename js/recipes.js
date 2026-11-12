@@ -1,4 +1,4 @@
-/* Recetas de DSP (tools/gen_recipes.py). id: nombre, nombre en inglés, grupo de edificio, producto, icono. */
+/* Recetas de DSP (tools/gen_recipes.py). id: nombre, nombre en inglés, grupo de edificio, producto (products: todos, si hay más de uno), icono. */
 (typeof window !== 'undefined' ? window : globalThis).DSPRecipes = {
 "1": {
 "name": "Lingote de hierro",
@@ -110,7 +110,11 @@
 "en": "Plasma Refining",
 "group": "refine",
 "product": 1120,
-"icon": "icons/recipes/16.webp"
+"icon": "icons/recipes/16.webp",
+"products": [
+1120,
+1114
+]
 },
 "17": {
 "name": "Grafito energético",
@@ -222,7 +226,11 @@
 "en": "Graphene (advanced)",
 "group": "chem",
 "product": 1123,
-"icon": "icons/recipes/32.webp"
+"icon": "icons/recipes/32.webp",
+"products": [
+1123,
+1120
+]
 },
 "33": {
 "name": "Nanotubo de carbono",
@@ -404,7 +412,11 @@
 "en": "X-ray Cracking",
 "group": "refine",
 "product": 1120,
-"icon": "icons/recipes/58.webp"
+"icon": "icons/recipes/58.webp",
+"products": [
+1120,
+1109
+]
 },
 "59": {
 "name": "Silicio de alta pureza",
@@ -516,7 +528,11 @@
 "en": "Mass-energy Storage",
 "group": "collider",
 "product": 1122,
-"icon": "icons/recipes/74.webp"
+"icon": "icons/recipes/74.webp",
+"products": [
+1122,
+1120
+]
 },
 "75": {
 "name": "Matriz universal",

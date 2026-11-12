@@ -45,7 +45,7 @@ La paleta sigue los grupos del menú de construcción del juego (Power, Collecti
 
 En la paleta, las cintas activan la herramienta de trazado (arrastra para hacer una línea en L, se conecta a cintas existentes). El resto de edificios se colocan con clic.
 
-El panel de la derecha muestra lo útil de cada cosa: receta (con dibujo) en edificios de producción; tipo Mk.I/II/III e icono en cintas; tipo, filtro, origen, destino y longitud en clasificadores; variante en divisores; clasificadores y puertos en uso. Los datos crudos del blueprint (modelo, posición, huecos, parámetros) quedan plegados en «Avanzado».
+El panel de la derecha muestra lo útil de cada cosa: receta (con dibujo) en edificios de producción; tipo Mk.I/II/III e icono en cintas; tipo, filtro, origen, destino y longitud en clasificadores; variante, prioridades y filtro en divisores; productos, puertos de salida y ajustes en estaciones; casillas y filtros en almacenes; modo del distribuidor y del receptor de rayos; clasificadores y puertos en uso. En el lienzo se ven con su icono la etiqueta de las cintas, el filtro de clasificadores y divisores y lo que sale por cada puerto de las estaciones. Al dibujar una cinta que sale de una estación, se pregunta qué producto sale (como el selector del juego: «Nada», #1…#5 o las teclas 0–5). Igual al sacar un clasificador de un edificio cuya receta da varios productos (refinería, planta química, colisionador): se elige cuál coge o «Todo». Los datos crudos del blueprint (modelo, posición, huecos, parámetros) quedan plegados en «Avanzado».
 
 El botón **🧹 Limpiar** borra los clasificadores a los que les falta el inicio o el fin.
 
@@ -104,7 +104,7 @@ Al colocar un almacén, tanque, laboratorio o distribuidor encima de otro compat
 
 ## Recetas
 
-El selector de receta del inspector muestra el dibujo de cada una, filtrado por edificio; el buscador acepta el nombre en español o en inglés. Los datos están en `js/recipes.js` y los dibujos en `icons/recipes/` (de la wiki de Fandom). Se generan con `python tools/gen_recipes.py`. La wiki no deja descargar los iconos por script: los que falten se listan en `tools/missing_icons.json` y hay que bajarlos desde el navegador.
+El selector de receta del inspector muestra el dibujo de cada una, filtrado por edificio; el buscador acepta el nombre en español o en inglés. Los datos están en `js/recipes.js` y los dibujos en `icons/recipes/` (de la wiki de Fandom). Los iconos de objetos (filtros, etiquetas de cinta, productos de estaciones) están en `icons/items/`, sacados de la página [Components](https://dyson-sphere-program.fandom.com/wiki/Components) de la wiki. Se generan con `python tools/gen_recipes.py`. La wiki no deja descargar los iconos por script: los que falten se listan en `tools/missing_icons.json` y hay que bajarlos desde el navegador.
 
 ## Choques
 

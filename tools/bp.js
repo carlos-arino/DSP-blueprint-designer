@@ -14,6 +14,7 @@ const BP = require('../js/codec.js');
 for (const f of ['recipes', 'items', 'geometry', 'shapes']) require(`../js/${f}.js`);
 const COL = require('../js/collision.js').make(globalThis.DSPGeometry, globalThis.DSPItems);
 const IT = globalThis.DSPItems;
+const PR = require('../js/props.js');
 
 const name = (id) => (IT.BUILDINGS[id] ? IT.BUILDINGS[id].en : IT.itemName(id));
 
@@ -21,7 +22,11 @@ async function read(file) {
   const text = fs.readFileSync(file, 'utf8');
   if (file.toLowerCase().endsWith('.json')) {
     const j = JSON.parse(text);
-    j.buildings = j.buildings.map((b, i) => { const c = { ...b }; delete c._name; c.index = i; return c; });
+    j.buildings = j.buildings.map((b, i) => {
+      const c = { ...b }; delete c._name; delete c._props; c.index = i;
+      if (b.props) { PR.write(c, b.props); delete c.props; }   // "props": cambios legibles (ver js/props.js)
+      return c;
+    });
     return j;
   }
   const bp = await BP.parse(text.trim());
@@ -38,7 +43,7 @@ const out = (data, file) => (file ? fs.writeFileSync(file, data) : process.stdou
   }
   const bp = await read(file);
   if (cmd === 'decode') {
-    const j = { ...bp, buildings: bp.buildings.map((b) => ({ _name: name(b.itemId), ...b })) };
+    const j = { ...bp, buildings: bp.buildings.map((b) => { const p = PR.read(b); return { _name: name(b.itemId), ...(p ? { _props: p } : {}), ...b }; }) };
     out(JSON.stringify(j, null, 1), dest);
   } else if (cmd === 'encode') {
     out(await BP.stringify(bp), dest);

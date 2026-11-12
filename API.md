@@ -42,6 +42,7 @@ const code = await DSP.export()                             // texto BLUEPRINT:.
 | `recipes(itemId)` | Recetas que admite ese edificio: `{ id, name, nameEs, product }` |
 | `slots(i)` | Huecos de clasificador del edificio: `{ slot, x, y, used }` |
 | `ports(i)` | Puertos de cinta (divisor, estaciones, intercambiador…): `{ slot, x, y, dir, level }` |
+| `props(i)` | Propiedades legibles del edificio (ver «Propiedades» más abajo), o `null` si no tiene |
 | `collisions()` | Pares que chocan en el blueprint actual |
 
 En `list()` y `get()` cada edificio trae `i, itemId, name, kind, x, y, z, yaw` y además:
@@ -69,6 +70,7 @@ En `list()` y `get()` cada edificio trae `i, itemId, name, kind, x, y, z, yaw` y
 | `setTier(indices, itemId)` | Cambia el nivel Mk.I/II/III de cintas o clasificadores |
 | `setModel(i, modelo)` | Variante del divisor |
 | `setLabel(indices, itemId)` | Icono que muestra una cinta |
+| `setProps(indices, cambios)` | Cambia propiedades (ver «Propiedades»). Solo se tocan los campos que pases |
 | `move(indices, dx, dy)` | Los clasificadores enganchados se mueven con su edificio. Las cintas no se estiran: si sueltas una cinta encima de otra del mismo nivel, la sustituye |
 | `rotate(indices, veces)` | 90° en sentido horario por vez, alrededor del centro del grupo |
 | `remove(indices)` · `removeBeltLine(i)` | Borrar. `removeBeltLine` borra toda la cinta conectada del mismo tipo |
@@ -83,6 +85,18 @@ En `list()` y `get()` cada edificio trae `i, itemId, name, kind, x, y, z, yaw` y
 | `await load(texto)` | Abre un código `BLUEPRINT:...` |
 | `await export()` | Devuelve el código `BLUEPRINT:...` |
 | `select(indices)` · `selection()` · `fit()` · `undo()` · `redo()` | Selección, encuadre y deshacer en la vista |
+
+### Propiedades
+
+`props(i)` y `setProps(indices, cambios)` traducen `parameters` a campos legibles (código en `js/props.js`). En las listas puedes dar solo las posiciones que cambian, por ejemplo `{ slots: [, { local: 1 }] }` o `{ priority: [false, false, true] }`.
+
+| Edificio | Campos |
+|---|---|
+| Receptor de rayos (2208) | `mode`: `'power'` (energía) o `'photon'` (fotones críticos) |
+| Distribuidor logístico (2107) | `item` (producto), `icarus` (2 dar y recoger, 1 solo dar, 3 solo recoger, 0 no; 1 y 3 sin comprobar en el juego), `distributors` (0 no, 1 ofrecer, 2 pedir), `chargeMW`, `autoBots` |
+| Almacén Mk.I/II (2101, 2102) | `usable` (casillas que se pueden usar; el resto quedan bloqueadas), `filters` (filtro de cada casilla, 0 = libre) |
+| Estaciones (2103, 2104) | `slots`: `[{ item, local, remote, max }]` con 0 almacén, 1 ofrecer, 2 pedir (al poner un producto en una casilla vacía, el límite es 5000 en la PLS y 10000 en la ILS si no se da `max`) · `ports`: 12 puertos `{ dir, storage }` (dir 1 sale, 2 entra; storage = nº de producto 1…n que sale por ese puerto) · `chargeMW`, `droneRange` (grados), `droneMinLoad`, `vesselRangeLY` (100 = ∞), `vesselMinLoad`, `warpAU`, `warpersRequired`, `orbitalCollector`, `outgoingCount` (0 = límite de tecnología), `autoDrones`, `autoVessels` |
+| Divisor (2020) | `priority`: 4 booleanos por puerto (0 N, 1 E, 2 S, 3 O en el de 4 lados); `filter`: producto que sale por la salida con prioridad |
 
 ### Reglas que aplica (igual que el editor)
 
@@ -119,7 +133,7 @@ node tools/bp.js check  BP.txt              # hash, choques, clasificadores suel
 node tools/bp.js info   BP.txt              # resumen por tipo de edificio
 ```
 
-El JSON es el blueprint completo. Cada edificio lleva `_name`, que es solo informativo y se ignora al codificar. Campos principales de cada edificio:
+El JSON es el blueprint completo. Cada edificio lleva `_name` y, si tiene, `_props` (propiedades legibles, ver «Propiedades»); los dos son solo informativos y se ignoran al codificar. Para cambiar propiedades sin tocar `parameters`, añade a un edificio `"props": { ... }` con los campos que cambian: se aplican al codificar. Campos principales de cada edificio:
 
 | Campo | Significado |
 |---|---|
