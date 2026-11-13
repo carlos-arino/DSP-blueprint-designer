@@ -31,7 +31,7 @@ python tools/serve.py
 | Click / Ctrl+click / drag on empty space | Select / add / box select |
 | Shift+click on a building (and drag without releasing) | Copy it with its recipe and sorters; dragging places copies in a row (the ones that collide are skipped) |
 | Drag the selection, arrow keys (Shift = 5) | Move. Attached sorters go with their building. Belts don't stretch: connections to what doesn't move are cut, and dropping a belt on another one at the same level replaces the one below (not allowed if they run in opposite directions). Free ends that face each other are connected again |
-| Double click | The whole belt line, or all identical buildings |
+| Double click | The whole belt line; on a production building, choose its recipe; on others, all identical buildings |
 | R | Rotate 90° (selection, or the ghost while placing). With the belt tool: the diagonal bend starts on the other side |
 | + / − | Belt height (also halfway through drawing: it goes up or down in that cell) |
 | E | Choose the recipe of the selection |
