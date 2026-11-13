@@ -1114,7 +1114,8 @@
       }
       if (!hit || dimmed(b)) continue;
       // el divisor ocupa la misma casilla que el final de sus cintas: dentro de su casilla gana él
-      const o = b.itemId === 2020 ? 1.5 : order(b) + (b.z > 0.5 ? 0.5 : 0);
+      // en una pila (p. ej. 3 alturas) gana el de más arriba, que es el que se ve
+      const o = b.itemId === 2020 ? 1.5 : order(b) + (b.z > 0.5 ? 0.5 + Math.min(b.z, 40) * 0.01 : 0);
       if (o > bestOrder || (o === bestOrder && d < bestD)) { best = b; bestOrder = o; bestD = d; }
     }
     return best;
