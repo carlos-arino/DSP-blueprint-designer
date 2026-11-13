@@ -1990,6 +1990,13 @@
       if (btn && !$('recipePop')) openRecipePicker(btn);
       return;
     }
+    // distribuidor logístico: se elige el material que distribuye
+    if (hit.itemId === 2107) {
+      S.sel = new Set([hit]); refresh();
+      const btn = insp.querySelector('[data-act="pickProp"][data-p="item"]');
+      if (btn && !$('recipePop')) btn.click();
+      return;
+    }
     S.bp.buildings.forEach((b) => { if (b.itemId === hit.itemId && b.recipeId === hit.recipeId) S.sel.add(b); }); refresh();
   });
 

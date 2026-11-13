@@ -67,7 +67,7 @@
     'save.exists': '"{name}" already exists. Overwrite?',
 
     // ------------------------------------------------------------- tools
-    'hint.select': 'Click: select · Ctrl: add · Shift+click: copy the building (drag to place it in a row) · Drag: move / box select · Double click: whole belt line / choose recipe · Right/middle button: pan',
+    'hint.select': 'Click: select · Ctrl: add · Shift+click: copy the building (drag to place it in a row) · Drag: move / box select · Double click: whole belt line / choose recipe or distributor item · Right/middle button: pan',
     'hint.place': 'Placing {name} · R: rotate{variant} · Esc: done',
     'hint.place.variant': ' · Tab: variant ({name})',
     'hint.belt': '{name} at level {level} · Drag to draw · +/- changes the height (also halfway: it goes up or down in that cell) · R: the bend starts on the other side · End on an arrow to go into a splitter, station… · Esc: done',
@@ -325,7 +325,7 @@
     'save.prompt': 'Nombre del archivo (se guardará en la carpeta abierta):',
     'save.exists': '"{name}" ya existe. ¿Sobrescribir?',
 
-    'hint.select': 'Clic: seleccionar · Ctrl: añadir · Mayús+clic: copiar el edificio (arrastra para ponerlo en fila) · Arrastrar: mover/selección por caja · Doble clic: toda la línea de cinta / elegir receta · Botón derecho/central: desplazar',
+    'hint.select': 'Clic: seleccionar · Ctrl: añadir · Mayús+clic: copiar el edificio (arrastra para ponerlo en fila) · Arrastrar: mover/selección por caja · Doble clic: toda la línea de cinta / elegir receta o material del distribuidor · Botón derecho/central: desplazar',
     'hint.place': 'Colocando {name} · R: girar{variant} · Esc: terminar',
     'hint.place.variant': ' · Tab: variante ({name})',
     'hint.belt': 'Cinta {name} a nivel {level} · Arrastra para trazar · +/- cambia la altura (también a mitad de trazado: sube o baja en esa casilla) · R: el codo empieza por el otro lado · Acaba en una flecha para entrar en un divisor, estación… · Esc: terminar',
