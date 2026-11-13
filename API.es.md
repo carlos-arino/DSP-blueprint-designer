@@ -132,7 +132,7 @@ Los cálculos (`js/rates.js`) suponen las máquinas trabajando sin parar y sin p
   - Las cintas no chocan entre sí si van a distinto nivel.
   - Una cinta solo atraviesa un edificio por sus carriles: puertos de estaciones e intercambiador, fila de munición de las torretas, carriles del pulverizador (producto a nivel 0 por el centro, proliferador a nivel 1).
   - Dos ensambladoras necesitan una casilla libre entre ellas; ahí cabe una Tesla.
-- **Huecos de clasificador.** Horno y ensambladora tienen 6 (0, 1, 2 al norte y 6, 7, 8 al sur). Consúltalos siempre con `slots(i)`.
+- **Huecos de clasificador.** Horno y ensambladora tienen 8 (0, 1, 2 al norte, 4 al este, 6, 7, 8 al sur y 10 al oeste). Consúltalos siempre con `slots(i)`.
 - **Recetas.** Cada edificio solo admite las de su grupo: hornos, ensambladoras, refinería, planta química, colisionador, fraccionador o laboratorio. Consúltalas con `recipes(itemId)`.
 
 ### Edificios más usados
