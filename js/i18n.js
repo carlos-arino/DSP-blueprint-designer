@@ -39,7 +39,7 @@
     'tb.dup': '⧉ Duplicate', 'tb.dup.tip': 'Duplicate (Ctrl+D)',
     'tb.delete': '🗑 Delete', 'tb.delete.tip': 'Delete (Del)',
     'tb.fit': '⤢ Fit', 'tb.fit.tip': 'Fit to view (F)',
-    'tb.clean': '🧹 Clean up', 'tb.clean.tip': 'Delete the sorters that are missing their start or end',
+    'tb.clean': '🧹 Clean up', 'tb.clean.tip': 'Do what the game does when building: merge duplicate belts (two in the same cell) and join belt ends to the belt in front. Also delete the sorters that are missing their start or end',
     'tb.level': 'Level', 'tb.level.tip': 'Height level: new belts are placed at this level and the rest is dimmed (PgUp/PgDn)',
     'tb.level.all': 'all', 'tb.level.ground': '0 ground',
     'tb.labels': 'Labels', 'tb.labels.tip': 'Icons for what stations and storages hold, what sorters filter and what machines produce',
@@ -100,6 +100,9 @@
     'move.cut': (v) => (v.n > 1 ? `${v.n} belt connections cut by the move` : '1 belt connection cut by the move'),
     'clean.none': 'No loose sorters',
     'clean.done': (v) => `${v.n} loose ${pl(v.n, 'sorter', 'sorters')} deleted`,
+    'clean.dups': (v) => `${v.n} duplicate ${pl(v.n, 'belt', 'belts')} merged`,
+    'clean.joined': (v) => `${v.n} belt ${pl(v.n, 'end', 'ends')} joined to the belt in front`,
+    'clean.dupsLeft': (v) => `${v.n} duplicate ${pl(v.n, 'belt', 'belts')} could not be merged (opposite directions)`,
     'copy.n': (v) => `${v.n} ${pl(v.n, 'building', 'buildings')} copied`,
     'paste.noRoom': 'No room: it would collide',
     'paste.n': (v) => `${v.n} ${pl(v.n, 'copy', 'copies')}${v.skipped ? ` (${v.skipped} skipped because they collide)` : ''}`,
@@ -193,6 +196,8 @@
     'flow.sorterOut': 'The sorters taking out {item} move {cap}/min and {need}/min are needed (the machine runs at {pct} %)',
     'flow.station': 'Receives {items}, which is in none of its slots',
     'flow.mix': 'Mix of {items}{label}',
+    'flow.ends': (v) => `${v.n} belt ${pl(v.n, 'end points', 'ends point')} at another belt without being joined. The game joins them, but here nothing passes: press 🧹 Clean up`,
+    'flow.dup': (v) => `${v.n} ${pl(v.n, 'belt is', 'belts are')} on top of another one in the same cell. The game merges them, but here they count as separate belts and some things will look unsupplied: press 🧹 Clean up`,
     'flow.mixLabel': ' (label: {name})',
 
     // ------------------------------------------------------------- simulation (sim.js)
@@ -260,6 +265,8 @@
 
     // ------------------------------------------------------------- pickers
     'pick.searchItem': 'Search item…', 'pick.searchRecipe': 'Search recipe…',
+    'pick.items': 'Items', 'pick.buildings': 'Buildings', 'pick.other': 'Other', 'pick.titleItem': 'Choose item',
+    'pick.found': (v) => `${v.n} found`,
     'recipe.none': 'No recipe', 'recipe.mixed': 'different recipes', 'recipe.n': 'Recipe #{id}',
     'recipe.other': 'Other (no.)',
 
@@ -292,7 +299,7 @@
     'tb.dup': '⧉ Duplicar', 'tb.dup.tip': 'Duplicar (Ctrl+D)',
     'tb.delete': '🗑 Borrar', 'tb.delete.tip': 'Borrar (Supr)',
     'tb.fit': '⤢ Encuadrar', 'tb.fit.tip': 'Encuadrar (F)',
-    'tb.clean': '🧹 Limpiar', 'tb.clean.tip': 'Borrar los clasificadores a los que les falta el inicio o el fin',
+    'tb.clean': '🧹 Limpiar', 'tb.clean.tip': 'Hacer lo que hace el juego al construir: fundir las cintas repetidas (dos en la misma casilla) y unir los finales de cinta a la cinta de delante. También borra los clasificadores a los que les falta el inicio o el fin',
     'tb.level': 'Altura', 'tb.level.tip': 'Nivel de altura: las cintas nuevas se ponen a este nivel y el resto se atenúa (RePág/AvPág)',
     'tb.level.all': 'todas', 'tb.level.ground': '0 suelo',
     'tb.labels': 'Etiquetas', 'tb.labels.tip': 'Iconos de lo que guardan las estaciones y almacenes, filtran los clasificadores y producen las máquinas',
@@ -350,6 +357,9 @@
     'move.cut': (v) => (v.n > 1 ? `${v.n} conexiones de cinta cortadas al mover` : '1 conexión de cinta cortada al mover'),
     'clean.none': 'No hay clasificadores sueltos',
     'clean.done': '{n} clasificadores sueltos borrados',
+    'clean.dups': '{n} cintas repetidas fundidas',
+    'clean.joined': '{n} finales de cinta unidos a la cinta de delante',
+    'clean.dupsLeft': '{n} cintas repetidas no se han podido fundir (sentidos contrarios)',
     'copy.n': '{n} edificios copiados',
     'paste.noRoom': 'No cabe: chocaría',
     'paste.n': (v) => `${v.n} copias${v.skipped ? ` (${v.skipped} saltadas por choque)` : ''}`,
@@ -438,6 +448,8 @@
     'flow.sorterOut': 'Los clasificadores que sacan {item} mueven {cap}/min y hacen falta {need}/min (la máquina va al {pct} %)',
     'flow.station': 'Le entra {items}, que no tiene en ninguna casilla',
     'flow.mix': 'Mezcla {items}{label}',
+    'flow.ends': '{n} finales de cinta apuntan a otra cinta sin estar unidos. El juego los une, pero aquí no pasa nada por ellos: pulsa 🧹 Limpiar',
+    'flow.dup': '{n} cintas están encima de otra en la misma casilla. El juego las funde, pero aquí cuentan como cintas distintas y puede parecer que a algo no le llega material: pulsa 🧹 Limpiar',
     'flow.mixLabel': ' (etiqueta: {name})',
 
     'sim.title': 'Simulación',
@@ -502,6 +514,8 @@
     'pick.nothing': 'Nada',
 
     'pick.searchItem': 'Buscar objeto…', 'pick.searchRecipe': 'Buscar receta…',
+    'pick.items': 'Objetos', 'pick.buildings': 'Edificios', 'pick.other': 'Otros', 'pick.titleItem': 'Elegir objeto',
+    'pick.found': '{n} encontrados',
     'recipe.none': 'Sin receta', 'recipe.mixed': 'recetas distintas', 'recipe.n': 'Receta #{id}',
     'recipe.other': 'Otra (nº)',
 

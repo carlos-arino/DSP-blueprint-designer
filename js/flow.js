@@ -170,6 +170,29 @@
       const label = b.parameters && b.parameters[0];
       issues.push({ level: 'warn', kind: 'mix', i, msg: t('flow.mix', { items: names(s), label: label ? t('flow.mixLabel', { name: name(label) }) : '' }), items: [...s] });
     });
+    // cintas repetidas (dos en la misma casilla y nivel): un solo aviso, en la primera
+    const cellBelts = new Map();
+    let dup = 0, firstDup = -1;
+    bs.forEach((b, i) => {
+      if (!isBelt(b)) return;
+      const k = `${Math.round(b.x)},${Math.round(b.y)},${Math.max(0, Math.round(b.z || 0))}`;
+      const l = cellBelts.get(k) || cellBelts.set(k, []).get(k);
+      if (l.some((a) => Math.abs(a.x - b.x) < 0.3 && Math.abs(a.y - b.y) < 0.3)) { dup++; if (firstDup < 0) firstDup = i; }
+      l.push(b);
+    });
+    if (dup) issues.unshift({ level: 'warn', kind: 'dup', i: firstDup, msg: t('flow.dup', { n: dup }), items: [] });
+    // finales de cinta sin unir que apuntan a otra cinta del mismo nivel (el juego los une al construir)
+    let ends = 0, firstEnd = -1;
+    bs.forEach((b, i) => {
+      if (!isBelt(b) || bs[b.outputObjIdx]) return;
+      const a = b.yaw * Math.PI / 180, x = Math.round(b.x + Math.sin(a)), y = Math.round(b.y + Math.cos(a));
+      const lv = Math.max(0, Math.round(b.z || 0));
+      const ahead = (c) => { const a2 = c.yaw * Math.PI / 180; return Math.abs(Math.round(c.x + Math.sin(a2)) - b.x) < 0.3 && Math.abs(Math.round(c.y + Math.cos(a2)) - b.y) < 0.3; };
+      const tg = bs.find((c) => c !== b && isBelt(c) && Math.abs(c.x - x) < 0.3 && Math.abs(c.y - y) < 0.3 && Math.max(0, Math.round(c.z || 0)) === lv);
+      if (!tg || bs[tg.outputObjIdx] === b || ahead(tg)) return;
+      ends++; if (firstEnd < 0) firstEnd = i;
+    });
+    if (ends) issues.unshift({ level: 'warn', kind: 'ends', i: firstEnd, msg: t('flow.ends', { n: ends }), items: [] });
     return { items, supplied, sinks, moves, issues };
   }
 
