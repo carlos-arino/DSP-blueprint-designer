@@ -1981,8 +1981,16 @@
     updateMouse(ev);
     if (S.tool !== 'select' || !S.bp) return;
     const hit = pick(S.mouse.wx, S.mouse.wy);
-    if (hit && isBelt(hit)) { selectBeltLine(hit); refresh(); }
-    else if (hit) { S.bp.buildings.forEach((b) => { if (b.itemId === hit.itemId && b.recipeId === hit.recipeId) S.sel.add(b); }); refresh(); }
+    if (hit && isBelt(hit)) { selectBeltLine(hit); refresh(); return; }
+    if (!hit) return;
+    // edificio con recetas: se elige la receta (como en el juego); si no, todos los iguales
+    if (IT.RECIPE_GROUP[hit.itemId]) {
+      S.sel = new Set([hit]); refresh();
+      const btn = $('recipeBtn');
+      if (btn && !$('recipePop')) openRecipePicker(btn);
+      return;
+    }
+    S.bp.buildings.forEach((b) => { if (b.itemId === hit.itemId && b.recipeId === hit.recipeId) S.sel.add(b); }); refresh();
   });
 
   canvas.addEventListener('wheel', (ev) => {
