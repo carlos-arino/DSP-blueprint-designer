@@ -4,22 +4,22 @@
  *   ox, oy  desplazamiento del centro de la huella respecto a la posición del edificio
  *   slots   posición de cada hueco de clasificador (índice = número de hueco); null = desconocido
  *
- * Horno y ensambladora: 6 conectores, 3 al norte y 3 al sur (enfrentados).
- * El juego los numera en sentido horario desde el noroeste: norte 0(O) 1 2(E) · sur 6(E) 7 8(O).
- * Los números 3-5 (este) y 9-11 (oeste) existen en el formato pero no se usan aquí.
+ * Horno y ensambladora: 8 conectores, 3 al norte, 3 al sur, 1 al este y 1 al oeste.
+ * El juego los numera en sentido horario desde el noroeste: norte 0(O) 1 2(E) · este 4 · sur 6(E) 7 8(O) · oeste 10.
+ * Los números 3, 5, 9 y 11 (esquinas vistas desde el lateral) existen en el formato pero no se usan aquí.
  */
 (function (root) {
   const ASM = [
     [-0.81, 0.87], [0, 0.87], [0.8, 0.87],        // 0 1 2  norte
-    null, null, null,                             // 3 4 5  este: sin conectores
+    null, [0.88, 0], null,                        // 3 4 5  este: solo el central
     [0.8, -0.87], [0, -0.87], [-0.8, -0.87],      // 6 7 8  sur
-    null, null, null,                             // 9 10 11  oeste: sin conectores
+    null, [-0.88, 0], null,                       // 9 10 11  oeste: solo el central
   ];
   const SMELTER = [
     [-0.8, 0.79], [0, 0.79], [0.8, 0.8],          // 0 1 2  norte
-    null, null, null,                             // 3 4 5  este: sin conectores
+    null, [0.8, 0], null,                         // 3 4 5  este: solo el central
     [0.84, -0.8], [0, -0.79], [-0.84, -0.8],      // 6 7 8  sur
-    null, null, null,                             // 9 10 11  oeste: sin conectores
+    null, [-0.8, 0], null,                        // 9 10 11  oeste: solo el central
   ];
   // Divisor: 3 variantes (modelo) con distintos puertos. [hueco, lado local, nivel (0 suelo, 1 elevado)]
   // Medido en tus blueprints; los marcados "sup" no aparecen conectados en ninguno todavía.

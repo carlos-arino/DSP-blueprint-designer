@@ -132,7 +132,7 @@ The calculations (`js/rates.js`) assume machines working non-stop with no prolif
   - Belts don't collide with each other if they are at different levels.
   - A belt only goes through a building along its lanes: station and energy exchanger ports, the turrets' ammo row, the spray coater lanes (product at level 0 along the center, proliferator at level 1).
   - Two assembling machines need a free cell between them; a Tesla tower fits there.
-- **Sorter slots.** Smelter and assembler have 6 (0, 1, 2 on the north side and 6, 7, 8 on the south). Always query them with `slots(i)`.
+- **Sorter slots.** Smelter and assembler have 8 (0, 1, 2 on the north side, 4 on the east, 6, 7, 8 on the south and 10 on the west). Always query them with `slots(i)`.
 - **Recipes.** Each building only accepts those of its group: smelters, assemblers, refinery, chemical plant, collider, fractionator or lab. Query them with `recipes(itemId)`.
 
 ### Most used buildings

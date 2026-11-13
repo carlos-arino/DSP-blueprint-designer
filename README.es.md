@@ -127,7 +127,7 @@ El selector de receta del inspector muestra el dibujo de cada una, filtrado por 
 
 ## Clasificadores
 
-Elige un clasificador en la paleta y arrastra desde el origen (una cinta o un hueco) hasta el destino. Los huecos se ven como puntos (rellenos = ocupados). Horno y ensambladora tienen 6: 3 al norte y 3 al sur. Se rellenan solos el hueco, la longitud (1–3) y el desplazamiento sobre la cinta (`floor(20 × distancia a lo largo de la cinta)`).
+Elige un clasificador en la paleta y arrastra desde el origen (una cinta o un hueco) hasta el destino. Los huecos se ven como puntos (rellenos = ocupados). Horno y ensambladora tienen 8: 3 al norte, 3 al sur, 1 al este y 1 al oeste. Se rellenan solos el hueco, la longitud (1–3) y el desplazamiento sobre la cinta (`floor(20 × distancia a lo largo de la cinta)`).
 
 ## Formato (resumen)
 

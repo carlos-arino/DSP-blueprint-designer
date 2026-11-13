@@ -135,7 +135,7 @@ The inspector's recipe picker shows each recipe's icon, filtered by building; th
 
 ## Sorters
 
-Pick a sorter in the palette and drag from the source (a belt or a slot) to the destination. Slots are shown as dots (filled = taken). Smelter and assembler have 6: 3 on the north side and 3 on the south. The slot, the length (1–3) and the offset along the belt (`floor(20 × distance along the belt)`) are filled in automatically.
+Pick a sorter in the palette and drag from the source (a belt or a slot) to the destination. Slots are shown as dots (filled = taken). Smelter and assembler have 8: 3 on the north side, 3 on the south, 1 on the east and 1 on the west. The slot, the length (1–3) and the offset along the belt (`floor(20 × distance along the belt)`) are filled in automatically.
 
 ## Format (summary)
 
