@@ -42,6 +42,11 @@ def main():
 
     item_zh = {int(i): n for i, n in re.findall(r"id: (\d+), models: \[[^\]]*\], grid: \[[^\]]*\],\s*name: '([^']*)'", items_ts)}
     blocks = re.findall(r"id: (\d+), name: '([^']*)', time: (\d+),\s*from: \[(.*?)\],\s*to: \[(.*?)\]", recipes_ts, re.S)
+    # posición en la ventana de recetas del juego: [página, fila, columna] (página 1 objetos, 2 edificios)
+    grid = {int(i): [int(a), int(b), int(c)] for i, a, b, c in
+            re.findall(r"id: (\d+), name: '[^']*', time: \d+,.*?grid: \[(\d+), (\d+), (\d+)\]", recipes_ts, re.S)}
+    item_grid = {int(i): [int(a), int(b), int(c)] for i, a, b, c in
+                 re.findall(r"id: (\d+), models: \[[^\]]*\], grid: \[(\d+), (\d+), (\d+)\]", items_ts)}
     counts = lambda txt: [[int(i), int(n)] for i, n in re.findall(r'itemsMap\.get\((\d+)\)!?, count: (\d+)', txt)]
 
     items = load_js(os.path.join(ROOT, 'js', 'items.js'), 'DSPItems')
@@ -70,6 +75,7 @@ def main():
         entry['time'] = int(ticks) / 60
         entry['in'] = counts(frm)
         entry['out'] = counts(to)
+        if rid in grid: entry['grid'] = grid[rid]
         icon = next((f'icons/recipes/{rid}.{e}' for e in ('png', 'webp') if os.path.exists(os.path.join(ROOT, 'icons', 'recipes', f'{rid}.{e}'))), None)
         if icon: entry['icon'] = icon
         else: missing.append({'id': rid, 'names': list(dict.fromkeys([en_name.strip(' -'), en_prod]))})
@@ -77,13 +83,17 @@ def main():
 
     with open(os.path.join(ROOT, 'js', 'recipes.js'), 'w', encoding='utf-8') as f:
         f.write('/* Recetas de DSP (tools/gen_recipes.py). id: nombre, nombre en inglés, grupo de edificio, producto\n'
-                '   (products: todos, si hay más de uno), icono, time (segundos a velocidad x1), in/out ([[objeto, cantidad], ...]). */\n')
+                '   (products: todos, si hay más de uno), icono, time (segundos a velocidad x1), in/out ([[objeto, cantidad], ...]),\n'
+                '   grid: [página, fila, columna] en la ventana de recetas del juego. DSPItemGrid: lo mismo para objetos. */\n')
         text = json.dumps(out, ensure_ascii=False, indent=0)
         # listas en una sola línea: "in": [[1001,1],[1002,2]], "products": [1120,1114]
         flat = lambda m: '[' + m.group(1).replace('\n', '') + ']'
         text = re.sub(r'\[\n([^\[\]{}]*?)\n\]', flat, text)
         text = re.sub(r'\[\n((?:\[[^\]]*\],?\n?)+?)\n?\]', flat, text)
         f.write("(typeof window !== 'undefined' ? window : globalThis).DSPRecipes = " + text + ';\n')
+        # posición de cada objeto en la ventana de objetos del juego (selector de filtros, distribuidor…)
+        f.write("(typeof window !== 'undefined' ? window : globalThis).DSPItemGrid = "
+                + json.dumps({str(k): v for k, v in sorted(item_grid.items())}, separators=(',', ':')) + ';\n')
     print(f'{len(out)} recetas, {sum("icon" in e for e in out.values())} con icono')
     if missing:
         # La wiki bloquea descargas automáticas: los iconos que faltan se bajan desde el navegador

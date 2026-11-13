@@ -211,7 +211,7 @@
     RECIPE_INFO[id] = {
       id: +id, es: cur && cur.known ? cur.es : r.name, known: true,
       group: cur ? cur.group : r.group, en: r.en, product: r.product, icon: r.icon || null,
-      products: r.products || (r.product ? [r.product] : []),
+      products: r.products || (r.product ? [r.product] : []), grid: r.grid || null,
     };
   }
   // nombre en el idioma actual (sin nombre conocido: "Recipe #id")

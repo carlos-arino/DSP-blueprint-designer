@@ -521,9 +521,12 @@
       };
       ctx.lineCap = 'round';
       if (up) {
-        // cinta elevada: funda oscura con borde claro y más estrecha, para que se vea pasar por encima
-        ctx.strokeStyle = 'rgba(230,236,245,.85)'; ctx.lineWidth = Math.max(3, s * 0.5 + 3); path(); ctx.stroke();
-        ctx.strokeStyle = '#0f1218'; ctx.lineWidth = Math.max(2.5, s * 0.5 + 1); path(); ctx.stroke();
+        // cinta elevada: funda oscura con borde claro y más estrecha, para que se vea pasar por encima.
+        // En el lienzo cada capa va en su pasada (todos los bordes, luego todas las fundas, luego el color):
+        // si no, el borde redondeado de cada tramo asoma sobre el anterior y la cinta parece una cadena.
+        if (pass === 'all' || pass === 'edge') { ctx.strokeStyle = 'rgba(230,236,245,.85)'; ctx.lineWidth = Math.max(3, s * 0.5 + 3); path(); ctx.stroke(); }
+        if (pass === 'all' || pass === 'case') { ctx.strokeStyle = '#0f1218'; ctx.lineWidth = Math.max(2.5, s * 0.5 + 1); path(); ctx.stroke(); }
+        if (pass === 'edge' || pass === 'case') { ctx.globalAlpha = 1; return; }
       }
       ctx.strokeStyle = color;
       ctx.lineWidth = up ? Math.max(1.2, s * 0.32) : Math.max(1.5, s * 0.5);
@@ -922,7 +925,7 @@
     drawList(visible.filter((b) => order(b) === 0 && b.z <= 0.5));
     for (let l = 1; l <= maxLevel; l++) {
       const lv = belts.filter((b) => levelOf(b) === l);
-      drawList(lv, 'line'); drawList(lv, 'arrow');
+      drawList(lv, 'edge'); drawList(lv, 'case'); drawList(lv, 'line'); drawList(lv, 'arrow');
     }
     drawList(visible.filter((b) => order(b) === 0 && b.z > 0.5));
     drawList(visible.filter(isSorter));
@@ -1600,14 +1603,16 @@
       return;
     }
     const joined = joinBeltEnds(new Set([...moved].filter((b) => S.bp.buildings.includes(b))));
+    relinkSorters([...moved].filter((b) => S.bp.buildings.includes(b)));
     if (merged) toast(t('move.merged', { n: merged }));
     else if (joined) toast(t('move.joined', { n: joined }));
     else if (cut) toast(t('move.cut', { n: cut }));
   }
 
   // Engancha extremos libres que se miran: una cinta sin salida cuya casilla de delante tiene otra cinta del
-  // mismo nivel (entre lo movido y lo quieto). Devuelve cuántas conexiones ha hecho.
-  function joinBeltEnds(moved) {
+  // mismo nivel (entre lo movido y lo quieto; con all, en todo el blueprint, como hace el juego al construir).
+  // Devuelve cuántas conexiones ha hecho.
+  function joinBeltEnds(moved, all) {
     const bs = S.bp.buildings;
     let n = 0;
     const ahead = (b) => {
@@ -1617,7 +1622,7 @@
     for (const b of bs) {
       if (!isBelt(b) || b.outputObjIdx >= 0) continue;
       const t = ahead(b);
-      if (!t || moved.has(b) === moved.has(t)) continue;
+      if (!t || (!all && moved.has(b) === moved.has(t))) continue;
       // no enganchar contra el frente de t (flujo contrario)
       if (bs[t.outputObjIdx] === b || ahead(t) === b) continue;
       b.outputObjIdx = bs.indexOf(t); b.outputToSlot = 1; n++;
@@ -1660,17 +1665,85 @@
     removeBuildings(new Set(pairs.map((p) => p[1])));
     return pairs.length;
   }
-  // Borra los clasificadores a los que les falta el inicio o el fin
+  // Engancha los extremos sueltos de los clasificadores de `list` a lo que tengan debajo: una cinta del mismo
+  // nivel (con su desplazamiento) o un hueco de edificio. Al pegar o mover un edificio con sus clasificadores,
+  // el extremo que iba a la cinta original se queda sin enlace aunque caiga sobre otra cinta.
+  function relinkSorters(list) {
+    const bs = S.bp.buildings;
+    let n = 0;
+    const at = (s, p) => {
+      for (const b of bs) {
+        if (b === s || isBelt(b) || isSorter(b) || Math.abs(b.x - p[0]) > 6 || Math.abs(b.y - p[1]) > 6) continue;
+        for (const sl of slotsOf(b)) if (Math.hypot(sl.pos[0] - p[0], sl.pos[1] - p[1]) < 0.15) return { kind: 'slot', b, slot: sl.slot, pos: sl.pos };
+      }
+      let best = null, bd = 0.55;
+      for (const b of bs) {
+        if (!isBelt(b) || levelOf(b) !== levelOf(s)) continue;
+        // la cinta debe pasar por el punto: dentro de su casilla y casi sobre su eje
+        const along = beltHorizontal(b) ? Math.abs(b.y - p[1]) : Math.abs(b.x - p[0]);
+        const d = Math.max(Math.abs(b.x - p[0]), Math.abs(b.y - p[1]));
+        if (along < 0.15 && d < bd) { bd = d; best = b; }
+      }
+      return best && { kind: 'belt', b: best };
+    };
+    for (const s of list) {
+      if (!isSorter(s)) continue;
+      if (!bs[s.inputObjIdx]) {
+        const a = at(s, [s.x, s.y]) && resolveSlot(at(s, [s.x, s.y]), [s.x2, s.y2]);
+        if (a) { s.inputObjIdx = bs.indexOf(a.b); s.inputFromSlot = a.kind === 'slot' ? a.slot : -1; s.inputOffset = a.kind === 'belt' ? beltOffset(a.b, [s.x, s.y]) : 0; n++; }
+      }
+      if (!bs[s.outputObjIdx]) {
+        const a = at(s, [s.x2, s.y2]) && resolveSlot(at(s, [s.x2, s.y2]), [s.x, s.y]);
+        if (a) { s.outputObjIdx = bs.indexOf(a.b); s.outputToSlot = a.kind === 'slot' ? a.slot : -1; s.outputOffset = a.kind === 'belt' ? beltOffset(a.b, [s.x2, s.y2]) : 0; n++; }
+      }
+    }
+    return n;
+  }
+
+  // Cintas repetidas: dos o más en la misma casilla y nivel (salen de pegar cintas encima de otras con versiones
+  // anteriores del editor). El juego las funde en una al construir; aquí se funden igual, pasando a la que queda
+  // las conexiones y los clasificadores de la otra. Devuelve cuántas se han quitado.
+  function dupBelts() {
+    const bs = S.bp.buildings, cells = new Map(), extra = new Set();
+    for (const b of bs) {
+      if (!isBelt(b)) continue;
+      const k = `${Math.round(b.x)},${Math.round(b.y)},${levelOf(b)}`;
+      const l = cells.get(k) || cells.set(k, []).get(k);
+      if (l.some((a) => !extra.has(a) && Math.abs(a.x - b.x) < 0.3 && Math.abs(a.y - b.y) < 0.3)) extra.add(b);
+      else l.push(b);
+    }
+    return extra;
+  }
+  function mergeDuplicateBelts() {
+    let n = 0;
+    for (let k = 0; k < 4; k++) {
+      const extra = dupBelts();
+      if (!extra.size) break;
+      const m = mergeDroppedBelts(extra);
+      if (!m) break;
+      n += m;
+    }
+    return n;
+  }
+  // Funde las cintas repetidas y borra los clasificadores a los que les falta el inicio o el fin
   function cleanSorters() {
     if (!S.bp) return;
+    const dups = dupBelts().size;
+    const bs0 = S.bp.buildings;
+    const loose0 = bs0.filter((b) => isSorter(b) && (!bs0[b.inputObjIdx] || !bs0[b.outputObjIdx])).length;
+    pushUndo();
+    const merged = dups ? mergeDuplicateBelts() : 0;
+    const joined = joinBeltEnds(new Set(), true);
+    if (!merged && !joined && !loose0) { S.undo.pop(); toast(t('clean.none')); return; }
+    if (merged) relinkSorters(S.bp.buildings.filter(isSorter));
     const bs = S.bp.buildings;
     const loose = new Set(bs.filter((b) => isSorter(b) && (!bs[b.inputObjIdx] || !bs[b.outputObjIdx])));
-    if (!loose.size) { toast(t('clean.none')); return; }
-    pushUndo();
     removeBuildings(loose);
     S.sel.clear();
     refresh();
-    toast(t('clean.done', { n: loose.size }));
+    const left = dupBelts().size;
+    toast([merged ? t('clean.dups', { n: merged }) : '', joined ? t('clean.joined', { n: joined }) : '', loose.size ? t('clean.done', { n: loose.size }) : '',
+      left ? t('clean.dupsLeft', { n: left }) : ''].filter(Boolean).join(' · ') || t('clean.none'), !!left);
   }
 
   function deleteSelection() {
@@ -1772,6 +1845,11 @@
       if (b.magic !== newMagic() && S.bp.buildings.length) b.magic = newMagic();
       S.bp.buildings.push(b);
     });
+    // las cintas pegadas encima de otras las sustituyen (como al soltar al mover; el juego tampoco deja dos
+    // cintas en la misma casilla). Si no encajan (sentido contrario), esta copia no se pega.
+    if (mergeDroppedBelts(new Set(list)) === false) { removeBuildings(new Set(list)); return null; }
+    joinBeltEnds(new Set(list.filter((b) => S.bp.buildings.includes(b))));
+    relinkSorters(list);
     return list;
   }
   function placeRow(start, end) {
@@ -1780,8 +1858,9 @@
     const placed = [];
     let skipped = 0;
     for (const [x, y] of pos) {
-      if (COL.find(clipPlaced(x, y), S.bp.buildings).length) { skipped++; continue; }
-      placed.push(...addClip(x, y));
+      const got = COL.find(clipPlaced(x, y), S.bp.buildings).length ? null : addClip(x, y);
+      if (!got) { skipped++; continue; }
+      placed.push(...got);
     }
     if (!placed.length) { S.undo.pop(); if (pos.length > 1 || skipped) toast(t('paste.noRoom'), true); return; }
     S.sel = new Set(placed);
@@ -1792,15 +1871,8 @@
 
   function placeClip(gx, gy) {
     pushUndo();
-    const base = S.bp.buildings.length;
-    const list = clipPlaced(gx, gy);
-    list.forEach((b, i) => {
-      b.index = base + i;
-      if (b.outputObjIdx >= 0) b.outputObjIdx += base;
-      if (b.inputObjIdx >= 0) b.inputObjIdx += base;
-      if (b.magic !== newMagic() && S.bp.buildings.length) b.magic = newMagic();
-      S.bp.buildings.push(b);
-    });
+    const list = addClip(gx, gy);
+    if (!list) { S.undo.pop(); toast(t('move.badBelt'), true); return; }
     S.sel = new Set(list);
     learnTemplates(S.bp);
     refresh();
@@ -2575,25 +2647,88 @@
     return `<span class="ricon badge g-x" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.38)}px">${esc(txt)}</span>`;
   }
   function openItemPicker(btn, current, emptyLabel, onPick) {
+    const grid = window.DSPItemGrid || {};
+    openGridPicker({
+      title: t('pick.titleItem'), search: t('pick.searchItem'), none: emptyLabel, onPick,
+      entries: ITEM_LIST.map((i) => ({
+        key: i.id, grid: grid[i.id] || null, cur: i.id === current, html: itemIcon(i.id, 40),
+        title: `${i.name}${i.en && i.en !== i.name ? ' / ' + i.en : ''} (${i.id})`,
+      })),
+    });
+  }
+
+  // ------------------------------------------------------------------ ventana de cuadrícula (como en el juego)
+  // Pestañas Objetos / Edificios, filas I–VIII y 14 columnas: cada entrada va en su sitio del juego
+  // (grid: [página, fila, columna], de js/recipes.js). Lo que no tiene sitio sale debajo, en "Otros".
+  // o: { title, search, none, entries: [{ key, grid, html, title, cur }], footer, onPick(key) }
+  const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+  function openGridPicker(o) {
     closeRecipePicker();
+    const pages = { 1: [], 2: [] }, extra = [];
+    for (const e of o.entries) (e.grid && pages[e.grid[0]] ? pages[e.grid[0]] : extra).push(e);
+    const cur = o.entries.find((e) => e.cur);
+    let page = cur && cur.grid && pages[cur.grid[0]] ? cur.grid[0] : pages[1].length ? 1 : 2;
+    const cell = (e, pos) => `<button type="button" class="gcell${e.cur ? ' cur' : ''}" data-k="${e.key}" data-s="${esc(e.title.toLowerCase())}" title="${esc(e.title)}"${pos ? ` style="grid-row:${e.grid[1]};grid-column:${e.grid[2] + 1}"` : ''}>${e.html}</button>`;
+    const sheet = (p) => {
+      let h = '';
+      for (let r = 1; r <= 8; r++) {
+        h += `<div class="glabel" style="grid-row:${r};grid-column:1">${ROMAN[r - 1]}</div>`;
+        for (let c = 1; c <= 14; c++) h += `<div class="gslot" style="grid-row:${r};grid-column:${c + 1}"></div>`;
+      }
+      return `<div class="gsheet" data-page="${p}"${p === page ? '' : ' hidden'}>${h}${pages[p].map((e) => cell(e, true)).join('')}</div>`;
+    };
+    const tab = (p, icon, label) => `<button type="button" class="gtab${p === page ? ' on' : ''}" data-page="${p}"${pages[p].length ? '' : ' disabled'}><span>${icon}</span><span>${esc(label)}</span></button>`;
     const pop = document.createElement('div');
     pop.id = 'recipePop';
-    pop.innerHTML = `<input type="search" id="recipeSearch" placeholder="${esc(t('pick.searchItem'))}">
-      <div class="rgrid">
-        <button type="button" class="rtile" data-item="0">${itemIcon(0, 36)}<span>${esc(emptyLabel)}</span></button>
-        ${ITEM_LIST.map((i) => `<button type="button" class="rtile${i.id === current ? ' cur' : ''}" data-item="${i.id}" title="${esc(i.name)}${i.en && i.en !== i.name ? ' / ' + esc(i.en) : ''} (${i.id})" data-en="${esc(i.en.toLowerCase())}">${itemIcon(i.id, 36)}<span>${esc(i.name)}</span></button>`).join('')}
-      </div>`;
-    (btn.closest('.field, .wide') || btn).after(pop);
-    const search = pop.querySelector('#recipeSearch');
-    search.focus();
+    pop.className = 'gpick';
+    pop.innerHTML = `<div class="ghead">
+        ${tab(1, '⚙', t('pick.items'))}${tab(2, '🏭', t('pick.buildings'))}
+        <div class="gtitle">${esc(o.title || '')}</div>
+        <input type="search" class="gsearch" placeholder="${esc(o.search || '')}">
+        <button type="button" class="gnone${cur ? '' : ' cur'}" data-k="0">${esc(o.none)}</button>
+        <button type="button" class="gclose" title="Esc">✕</button>
+      </div>
+      ${sheet(1)}${sheet(2)}
+      ${extra.length ? `<div class="gextra"><span class="muted small">${esc(t('pick.other'))}</span><div>${extra.map((e) => cell(e, false)).join('')}</div></div>` : ''}
+      <div class="gfoot"><span class="gname"></span>${o.footer || ''}</div>`;
+    document.body.appendChild(pop);
+    const showPage = (p) => {
+      page = p;
+      pop.querySelectorAll('.gtab').forEach((x) => x.classList.toggle('on', +x.dataset.page === p));
+      pop.querySelectorAll('.gsheet').forEach((x) => { x.hidden = +x.dataset.page !== p; });
+    };
+    const search = pop.querySelector('.gsearch');
+    const matches = () => [...pop.querySelectorAll('.gcell:not(.dim)')];
     search.addEventListener('input', () => {
-      const q = search.value.toLowerCase();
-      pop.querySelectorAll('.rtile').forEach((t) => { t.hidden = q && !t.textContent.toLowerCase().includes(q) && !(t.dataset.en || '').includes(q) && t.dataset.item !== q; });
+      const q = search.value.trim().toLowerCase();
+      pop.querySelectorAll('.gcell').forEach((x) => x.classList.toggle('dim', !!q && !x.dataset.s.includes(q) && x.dataset.k !== q));
+      // si en la pestaña actual no hay nada y en la otra sí, se cambia
+      if (q && !pop.querySelector(`.gsheet[data-page="${page}"] .gcell:not(.dim)`)) {
+        const other = pop.querySelector('.gsheet .gcell:not(.dim)');
+        if (other) showPage(+other.closest('.gsheet').dataset.page);
+      }
+      const m = matches();
+      pop.querySelector('.gname').textContent = q ? (m.length === 1 ? m[0].title : t('pick.found', { n: m.length })) : '';
+    });
+    const pick = (k) => { closeRecipePicker(); o.onPick(k); };
+    pop.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); closeRecipePicker(); }
+      else if (ev.key === 'Enter' && ev.target === search) {
+        // Intro: la primera coincidencia de la pestaña visible (o de cualquiera)
+        const m = pop.querySelector(`.gsheet[data-page="${page}"] .gcell:not(.dim)`) || matches()[0];
+        if (m && search.value.trim()) { ev.preventDefault(); pick(+m.dataset.k); }
+      }
+    });
+    pop.addEventListener('mouseover', (ev) => {
+      const c = ev.target.closest('.gcell'); if (c) pop.querySelector('.gname').textContent = c.title;
     });
     pop.addEventListener('click', (ev) => {
-      const t = ev.target.closest('.rtile'); if (!t) return;
-      closeRecipePicker(); onPick(+t.dataset.item);
+      const tb = ev.target.closest('.gtab'); if (tb) { showPage(+tb.dataset.page); return; }
+      if (ev.target.closest('.gclose')) { closeRecipePicker(); return; }
+      const c = ev.target.closest('[data-k]'); if (c) pick(+c.dataset.k);
     });
+    search.focus();
+    return pop;
   }
   // Cambiar el tipo (Mk.I/II/III…) de cintas o clasificadores de la selección
   function setTier(id) {
@@ -2659,29 +2794,18 @@
     return out;
   }
   function openRecipePicker(btn) {
-    closeRecipePicker();
     const list = recipeChoices();
     const cur = [...S.sel].find((b) => b.recipeId)?.recipeId;
-    const pop = document.createElement('div');
-    pop.id = 'recipePop';
-    pop.innerHTML = `<input type="search" id="recipeSearch" placeholder="${esc(t('pick.searchRecipe'))}">
-      <div class="rgrid">
-        <button type="button" class="rtile" data-recipe="0">${recipeIcon(0, 36)}<span>${esc(t('recipe.none'))}</span></button>
-        ${list.map((r) => `<button type="button" class="rtile${r.id === cur ? ' cur' : ''}${r.known ? '' : ' unknown'}" data-recipe="${r.id}" title="${esc(r.name)}${r.en && r.en !== r.name ? ' / ' + esc(r.en) : ''} (#${r.id})" data-en="${esc((r.en || '').toLowerCase())}">${recipeIcon(r.id, 36)}<span>${esc(r.name)}</span></button>`).join('')}
-      </div>
-      <div class="row"><label class="small muted">${t('recipe.other')}</label><input type="number" id="recipeOther" min="0" style="width:80px"></div>`;
-    (btn.closest('.field, .wide') || btn).after(pop);
-    const search = pop.querySelector('#recipeSearch');
-    search.focus();
-    search.addEventListener('input', () => {
-      const q = search.value.toLowerCase();
-      pop.querySelectorAll('.rtile').forEach((t) => { t.hidden = q && !t.textContent.toLowerCase().includes(q) && !(t.dataset.en || '').includes(q) && t.dataset.recipe !== q; });
+    const kinds = [...new Set([...S.sel].filter((b) => IT.RECIPE_GROUP[b.itemId]).map((b) => IT.itemName(b.itemId)))];
+    const pop = openGridPicker({
+      title: kinds.join(', '), search: t('pick.searchRecipe'), none: t('recipe.none'), onPick: applyRecipe,
+      entries: list.map((r) => ({
+        key: r.id, grid: r.grid, cur: r.id === cur, html: recipeIcon(r.id, 40),
+        title: `${r.name}${r.en && r.en !== r.name ? ' / ' + r.en : ''} (#${r.id})`,
+      })),
+      footer: `<label class="small muted">${t('recipe.other')}</label><input type="number" class="gother" min="0" style="width:80px">`,
     });
-    pop.addEventListener('click', (ev) => {
-      const t = ev.target.closest('.rtile'); if (!t) return;
-      applyRecipe(+t.dataset.recipe);
-    });
-    pop.querySelector('#recipeOther').addEventListener('change', (ev) => {
+    pop.querySelector('.gother').addEventListener('change', (ev) => {
       const v = parseInt(ev.target.value, 10); if (Number.isFinite(v) && v >= 0) applyRecipe(v);
     });
   }
