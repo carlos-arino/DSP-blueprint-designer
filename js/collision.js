@@ -20,6 +20,8 @@
   const SORTERS = new Set([2011, 2012, 2013, 2014]);
   // edificios que dejan pasar cintas por debajo o por sus puertos
   const BELT_OK = new Set([2020, 2030, 2040, 2105, 2107]);
+  // edificios por encima de los que puede pasar un clasificador (las Tesla no: el clasificador choca con ellas)
+  const OVER_OK = new Set([2313]);
   // Carriles: la cinta solo puede entrar en el edificio por estas líneas (puntos de entrada/salida).
   // [eje, valor, nivel] en local (yaw 0): ['x', v] = cintas con x local ≈ v (carril norte-sur), ['y', v] = con y ≈ v
   // (este-oeste). El nivel (por defecto 0) es la altura de la cinta respecto al edificio.
@@ -168,7 +170,47 @@
           if (ea.some(([x, y, z]) => eb.some(([u, v, w]) => Math.hypot(x - u, y - v) < 0.5 - EPS && Math.abs(z - w) < 0.5))) pairs.push([a, b]);
         }
       }
+      // clasificadores que atraviesan un edificio (también el suyo: entrar por un lado y llegar a un hueco del otro).
+      // Pueden pasar por encima de cintas, pero no por dentro de un edificio.
+      const solids = (arr) => arr.filter((b) => !SORTERS.has(b.itemId) && !BELTS.has(b.itemId) && !BELT_OK.has(b.itemId) && !OVER_OK.has(b.itemId));
+      const near = (s, b) => Math.abs(s.x - b.x) < 8 && Math.abs(s.y - b.y) < 8;
+      const check = (ss, bb) => {
+        for (const s of ss) for (const b of bb) if (near(s, b) && crosses(s, b)) pairs.push([s, b]);
+      };
+      if (others) { check(sl, solids(others)); check(sp, solids(list)); } else check(sl, solids(list));
       return pairs;
+    }
+
+    function inside(k, x, y) {
+      if (k.r) return Math.hypot(x - k.cx, y - k.cy) < k.r - 0.1;
+      if (k.cells) return k.cells.some(([cx, cy]) => Math.abs(x - cx) < CELL && Math.abs(y - cy) < CELL);
+      if (Math.abs(x - k.cx) > k.hw - 0.1 || Math.abs(y - k.cy) > k.hh - 0.1) return false;
+      if (k.cut && Math.abs(x - k.cx) > k.hw - k.cut && Math.abs(y - k.cy) > k.hh - k.cut) return false;
+      return true;
+    }
+    // ¿El clasificador pasa por dentro del edificio?
+    //  - si un extremo es un hueco de este edificio (en el juego queda dentro, junto al borde), desde ahí tiene que
+    //    alejarse del centro: llegar a un hueco desde el otro lado es atravesar el edificio. En las esquinas vale
+    //    cualquiera de los dos lados (tus blueprints);
+    //  - si no, el tramo (sin sus extremos) no puede pasar por dentro.
+    function crosses(s, b) {
+      const z = Math.max(s.z || 0, s.z2 || 0);
+      if ((b.z || 0) > z + 0.5) return false;   // edificio apilado por encima
+      const k = body(b); if (!k) return false;
+      const dx = s.x2 - s.x, dy = s.y2 - s.y, len = Math.hypot(dx, dy);
+      if (len < 1e-6) return false;
+      let own = false;
+      for (const [x, y, slot, sg] of [[s.x, s.y, s.inputFromSlot, 1], [s.x2, s.y2, s.outputToSlot, -1]]) {
+        if (!(slot >= 0) || !inside(k, x, y)) continue;
+        own = true;
+        const rx = x - k.cx, ry = y - k.cy, rl = Math.hypot(rx, ry);
+        if (rl > 1e-3 && (rx * dx + ry * dy) * sg / (rl * len) < 0.2) return true;
+      }
+      if (own) return false;
+      for (let d = 0.35; d <= len - 0.35 + 1e-9; d += 0.1) {
+        if (inside(k, s.x + dx * d / len, s.y + dy * d / len)) return true;
+      }
+      return false;
     }
 
     return { body, collides, find };

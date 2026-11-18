@@ -53,6 +53,24 @@ function walk(d) { return fs.readdirSync(d, { withFileTypes: true }).flatMap((e)
   console.log(`${sameSpot ? 'OK    ' : 'FALLO '} dos clasificadores en el mismo punto de la cinta: choca`);
   console.log(`${apart ? 'OK    ' : 'FALLO '} desplazados 0,86 (hueco 6): no choca`);
   if (!sameSpot || !apart) total++;
+  // clasificadores que atraviesan un edificio (ensambladora en 0,0: huecos a ±0,87 del centro)
+  const sx = (x, y, x2, y2, inSlot, outSlot) => ({ itemId: 2011, x, y, x2, y2, z: 0, z2: 0, yaw: 0, inputFromSlot: inSlot, outputToSlot: outSlot });
+  const asm = mk(2303, 0, 0), tesla = mk(2201, 0, 3);
+  const through = [
+    ['cinta norte → hueco norte', sx(0, 3, 0, 0.87, -1, 1), false],
+    ['cinta norte → hueco sur (atraviesa)', sx(0.8, 2, 0.8, -0.87, -1, 6), true],
+    ['hueco sur → cinta norte (atraviesa)', sx(0, -0.87, 0, 2, 7, -1), true],
+    ['esquina noreste desde el este', sx(3, 0.87, 0.8, 0.87, -1, 2), false],
+    ['cinta junto a la ensambladora, por fuera', sx(2, 3, 2, 1, -1, -1), false],
+    ['cinta a cinta por encima de la ensambladora', sx(0, 2, 0, -2, -1, -1), true],
+    ['por encima de una Tesla', sx(-1, 3, 1, 3, -1, -1), true],
+    ['junto a una Tesla', sx(-1, 3.8, 1, 3.8, -1, -1), false],
+  ];
+  for (const [label, s, want] of through) {
+    const got = COL.find([asm, tesla, s]).length > 0;
+    if (got !== want) total++;
+    console.log(`${got === want ? 'OK    ' : 'FALLO '} clasificador ${label}: ${got ? 'choca' : 'no choca'}`);
+  }
   for (const [label, a, b, want] of cases) {
     const got = COL.collides(a, b);
     if (got !== want) total++;
