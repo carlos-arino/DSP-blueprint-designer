@@ -1317,12 +1317,9 @@
       node.outputObjIdx = bs.indexOf(endPort.b); node.outputToSlot = endPort.slot;
       msg = ` (a ${IT.itemName(endPort.b.itemId)})`;
       prev = null;
-    } else if (prev && created.includes(prev)) {
-      // ¿hay una cinta del mismo nivel justo después del final? conectar
-      const a = prev.yaw * Math.PI / 180;
-      const nxt = beltAt(Math.round(prev.x + Math.sin(a)), Math.round(prev.y + Math.cos(a)), L);
-      if (nxt && nxt !== prev) { prev.outputObjIdx = bs.indexOf(nxt); prev.outputToSlot = 1; }
     }
+    // Solo se conecta a otra cinta si el trazo termina SOBRE ella (arriba); quedarse a una
+    // casilla apuntándole no la conecta, igual que en el juego.
     if (!created.length) { S.undo.pop(); return; }
     // puertos de estación: el sentido lo marca la cinta; en las salidas se pregunta qué producto sale
     const outSt = startPort && PR.STATION_SLOTS[startPort.b.itemId] ? startPort : null;
