@@ -13,3 +13,6 @@ tools/missing_icons.json
 
 # Ajustes locales de Claude Code
 .claude/settings.local.json
+
+# Lanzador local de Windows
+start.bat
