@@ -106,17 +106,21 @@
     3008: 'Planetary Shield Generator', 3009: 'Battlefield Analysis Base', 3010: 'SR Plasma Turret',
   };
 
-  // Grupos del menú de construcción del juego (wiki: Buildings → Groupings), en su orden
+  // Menú de construcción del juego: categorías 1…8 y, dentro de cada una, los edificios en el orden de F1, F2…
+  // (copiado de capturas del juego). Los que salen de la Niebla Oscura y el acumulador lleno van al final de su grupo.
   const MENU = [
-    { key: 'power', es: 'Energía', en: 'Power', ids: [2201, 2202, 2212, 2203, 2204, 2205, 2213, 2211, 2210, 2206, 2207] },
-    { key: 'collecting', es: 'Extracción', en: 'Collecting', ids: [2301, 2316, 2306, 2307, 2105] },
-    { key: 'logistics', es: 'Logística', en: 'Logistics', ids: [2001, 2002, 2003, 2011, 2012, 2013, 2014, 2020, 2040, 2030, 2313] },
+    { key: 'power', es: 'Energía', en: 'Power', ids: [2201, 2202, 2212, 2203, 2204, 2205, 2213, 2211, 2206, 2207] },
+    { key: 'collecting', es: 'Extracción', en: 'Collecting', ids: [2301, 2316, 2306, 2307] },
+    { key: 'logistics', es: 'Logística', en: 'Logistics', ids: [2001, 2002, 2003, 2011, 2012, 2013, 2014, 2020, 2030, 2313] },
     { key: 'storage', es: 'Almacenamiento', en: 'Storage', ids: [2101, 2102, 2106] },
-    { key: 'production', es: 'Producción', en: 'Production', ids: [2302, 2315, 2319, 2303, 2304, 2305, 2318, 2308, 2309, 2317, 2314, 2310] },
-    { key: 'transportation', es: 'Transporte', en: 'Transportation', ids: [2107, 2103, 2104, 2209] },
-    { key: 'defense', es: 'Defensa', en: 'Defense', ids: [3001, 3002, 3003, 3004, 3010, 3005, 3006, 3007, 3008, 3009] },
-    { key: 'cosmo', es: 'Investigación y esfera Dyson', en: 'Research & Dyson Sphere', ids: [2901, 2902, 2311, 2312, 2208] },
+    { key: 'production', es: 'Producción', en: 'Production', ids: [2302, 2315, 2303, 2304, 2305, 2308, 2314, 2309, 2317, 2310, 2319, 2318] },
+    { key: 'transportation', es: 'Transporte', en: 'Transportation', ids: [2107, 2040, 2103, 2104, 2105, 2209] },
+    { key: 'defense', es: 'Defensa', en: 'Defense', ids: [3001, 3005, 3003, 3002, 3004, 3010, 3009, 3006, 3007, 3008] },
+    { key: 'cosmo', es: 'Investigación y esfera Dyson', en: 'Research & Dyson Sphere', ids: [2901, 2311, 2208, 2312, 2210, 2902] },
   ];
+  // posición de cada edificio en el menú (para ordenar listas como en el juego)
+  const MENU_ORDER = {};
+  MENU.forEach((g, i) => g.ids.forEach((id, j) => { MENU_ORDER[id] = i * 100 + j; }));
 
   for (const g of MENU) Object.defineProperty(g, 'name', { get: () => (isEn() ? g.en : g.es), enumerable: true });
 
@@ -256,5 +260,5 @@
     return BUILDINGS[id] || { id, name: '#' + id, cat: 'assembly', w: 2, h: 2, short: String(id) };
   }
 
-  root.DSPItems = { CATS, MENU, BUILDINGS, MATERIALS, RECIPES, RECIPE_INFO, RECIPE_GROUP, ITEM_EN, itemIcon, recipesFor, itemName, recipeName, buildingInfo };
+  root.DSPItems = { CATS, MENU, MENU_ORDER, BUILDINGS, MATERIALS, RECIPES, RECIPE_INFO, RECIPE_GROUP, ITEM_EN, itemIcon, recipesFor, itemName, recipeName, buildingInfo };
 })(typeof window !== 'undefined' ? window : globalThis);

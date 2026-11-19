@@ -7,8 +7,11 @@
  *   - divisor, monitor, apilador y pulverizador aceptan cintas debajo o dentro;
  *   - estaciones: base de 7×7 con las esquinas recortadas (cabe una Tesla en cada una);
  *     las cintas solo pueden entrar por los carriles de los puertos (3 casillas centrales de cada lado);
- *   - edificios a distinta altura (almacén sobre divisor…) no chocan entre sí, pero todos los edificios
- *     son altos: una cinta elevada también choca con ellos (salvo por sus carriles de ese nivel);
+ *   - altura: cada edificio ocupa desde su base (z) hasta z + HEIGHT (en niveles de cinta). Dos edificios chocan
+ *     si además de solaparse en planta se solapan en altura; una cinta elevada choca con un edificio mientras
+ *     no pase por encima de su altura (o por sus carriles de ese nivel). Solo se conoce la altura de los edificios
+ *     que se apilan o se cruzan en tus blueprints (HEIGHT); los demás se consideran altos para las cintas (ninguna
+ *     pasa por encima) y no se comprueban contra otros edificios a distinta altura;
  *   - ensambladora: cuerpo de 3,2 → con otra ensambladora al lado hace falta un hueco
  *     (cabe una torre Tesla en medio), pero una cinta o una Tesla pueden ir pegadas.
  */
@@ -38,6 +41,18 @@
     // proliferador lo cruza a nivel 1 por una sola fila, a una casilla del centro (Ejemplos: super-magnetic, Almacenes)
     2313: [['x', 0, 0], ['y', -1, 1]],
   };
+
+  // Altura de cada edificio en niveles de cinta (1 nivel = lo que sube una cinta elevada). Medida en blueprints
+  // reales: a esa altura se apila otro edificio encima (almacén sobre almacén a z = 2, laboratorio sobre laboratorio
+  // a 3…) o pasan cintas por encima (divisor: cintas a nivel 2). Los que no están aquí no tienen dato: se tratan
+  // como altos (Infinity) y nada puede pasar por encima.
+  const HEIGHT = {
+    2020: 2,                        // divisor: almacén encima a z = 2; cintas cruzando a nivel 2
+    2101: 2, 2102: 3, 2106: 3,      // almacén Mk.I / Mk.II y tanque: el siguiente de la pila
+    2901: 3, 2902: 3,               // laboratorios apilados
+  };
+  const heightOf = (id) => (HEIGHT[id] === undefined ? Infinity : HEIGHT[id]);
+  const ZTOL = 0.25;   // el distribuidor va a z = 1,87 sobre un almacén de altura 2
 
   // Cuerpo de colisión en local (yaw 0). Sobrescribe la huella de dibujo cuando hace falta.
   const BODY = {
@@ -93,8 +108,7 @@
       return false;
     }
 
-    function overlap(p, q, anyHeight) {
-      if (!anyHeight && Math.abs(p.z - q.z) > 0.5) return false;
+    function overlap(p, q) {
       if (p.r && q.r) return Math.hypot(p.cx - q.cx, p.cy - q.cy) < p.r + q.r - EPS;
       if (p.r || q.r) {
         const c = p.r ? p : q, k = p.r ? q : p;
@@ -124,11 +138,20 @@
     function collides(a, b) {
       if (a === b || exempt(a, b)) return false;
       const p = body(a), q = body(b);
-      // cinta contra edificio: los edificios son altos, choca a cualquier nivel por encima de su base
-      const beltVsBuilding = BELTS.has(a.itemId) !== BELTS.has(b.itemId);
-      const bl = BELTS.has(a.itemId) ? a : b, bd = bl === a ? b : a;
-      const anyHeight = beltVsBuilding && (bl.z || 0) > (bd.z || 0) - 0.5;
-      return !!(p && q && overlap(p, q, anyHeight));
+      if (!p || !q) return false;
+      const az = a.z || 0, bz = b.z || 0;
+      if (BELTS.has(a.itemId) !== BELTS.has(b.itemId)) {
+        // cinta contra edificio: choca desde la base del edificio hasta su altura (los de altura desconocida, siempre)
+        const bl = BELTS.has(a.itemId) ? a : b, bd = bl === a ? b : a, dz = (bl.z || 0) - (bd.z || 0);
+        if (dz <= -0.5 || dz > heightOf(bd.itemId) - ZTOL) return false;
+      } else if (Math.abs(az - bz) > 0.5) {
+        // dos edificios a distinta altura: chocan si el de arriba empieza antes de que acabe el de abajo.
+        // Si no se sabe la altura del de abajo no se avisa (en tus blueprints hay torres Tesla bajo el vuelo
+        // de un almacén elevado, y no hay dato para decir si el juego lo admite).
+        const lo = az < bz ? a : b, hi = lo === a ? b : a;
+        if (HEIGHT[lo.itemId] === undefined || (hi.z || 0) - (lo.z || 0) > HEIGHT[lo.itemId] - ZTOL) return false;
+      }
+      return overlap(p, q);
     }
 
     // Pares que chocan. `others` (opcional): comprobar solo `list` contra `others`.
@@ -216,6 +239,6 @@
     return { body, collides, find };
   }
 
-  root.DSPCollision = { make, BODY, BELT_OK, LANES };
+  root.DSPCollision = { make, BODY, BELT_OK, LANES, HEIGHT, heightOf };
   if (typeof module !== 'undefined') module.exports = root.DSPCollision;
 })(typeof window !== 'undefined' ? window : globalThis);

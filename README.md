@@ -45,9 +45,9 @@ python tools/serve.py
 | Right click | Same as Esc (cancel the tool / deselect) |
 | Drag with the right/middle button or Space, wheel | Pan, zoom |
 
-The palette follows the groups of the game's build menu (Power, Collecting, Logistics, Storage, Production, Transportation, Defense, Research & Dyson Sphere) with the wiki icon of each building (`icons/buildings/`). Click on a group to fold or unfold it; the search box accepts the name or the item number. Assembling machines Mk.I/II/III are drawn in yellow, green and blue, like belts and sorters; the pile sorter in white. Re-composing assembler, plane and negentropy smelters, quantum chemical plant and self-evolution lab use the geometry of their equivalent (models from `huww98/dsp_blueprint_editor`).
+The build bar at the bottom of the canvas works like the game's: keys `1`…`8` open a category (Power, Collecting, Logistics, Storage, Production, Transportation, Defense, Research & Dyson Sphere) and `F1`…`F10` pick a building, in the same order as in the game; `Esc` closes it. With no selection, the right panel starts with the buildings the blueprint needs (count per type), then what it makes and needs per minute, power use, supply-area coverage (⚡ shows each tower's supply area, the links between towers and the buildings left outside) and the checks. Heights: a belt can pass over a building only above its measured height (depot 2 levels, lab 3, splitter 2); buildings with no data count as tall. Assembling machines Mk.I/II/III are drawn in yellow, green and blue, like belts and sorters; the pile sorter in white. Re-composing assembler, plane and negentropy smelters, quantum chemical plant and self-evolution lab use the geometry of their equivalent (models from `huww98/dsp_blueprint_editor`).
 
-In the palette, belts start the drawing tool (drag to make an L-shaped line; it connects to existing belts). Other buildings are placed with a click.
+In the build bar, belts start the drawing tool (drag to make an L-shaped line; it connects to existing belts). Other buildings are placed with a click.
 
 The right panel shows what matters for each thing:
 
@@ -135,7 +135,7 @@ The inspector's recipe picker shows each recipe's icon, filtered by building; th
 
 ## Sorters
 
-Pick a sorter in the palette and drag from the source (a belt or a slot) to the destination. Slots are shown as dots (filled = taken). Smelter and assembler have 8: 3 on the north side, 3 on the south, 1 on the east and 1 on the west. The slot, the length (1–3) and the offset along the belt (`floor(20 × distance along the belt)`) are filled in automatically.
+Pick a sorter in the build bar and drag from the source (a belt or a slot) to the destination. Slots are shown as dots (filled = taken). Smelter and assembler have 8: 3 on the north side, 3 on the south, 1 on the east and 1 on the west. The slot, the length (1–3) and the offset along the belt (`floor(20 × distance along the belt)`) are filled in automatically.
 
 ## Format (summary)
 

@@ -6,6 +6,7 @@
   const PR = window.DSPProps;   // propiedades de edificios (js/props.js)
   const RT = window.DSPRates;   // ritmos de producción y potencia (js/rates.js)
   const FL = window.DSPFlow;    // qué productos llegan a cada sitio (js/flow.js)
+  const PW = window.DSPPower;   // cobertura eléctrica (js/power.js)
   const SM = window.DSPSim;     // simulación de flujo en régimen estable (js/sim.js)
   const I18N = window.DSPI18n;  // idiomas (js/i18n.js)
   const t = I18N.t;
@@ -31,7 +32,8 @@
     showChecks: (() => { try { return localStorage.getItem('dspShowChecks') !== '0'; } catch (e) { return true; } })(),
     openEnds: (() => { try { return localStorage.getItem('dspOpenEnds') === '1'; } catch (e) { return false; } })(),
     fillDepots: (() => { try { return localStorage.getItem('dspFillDepots') !== '0'; } catch (e) { return true; } })(),
-    level: 'all', splitModel: 39, beltFlip: false,
+    level: 'all', splitModel: 39, beltFlip: false, buildCat: null,
+    showPower: (() => { try { return localStorage.getItem('dspShowPower') !== '0'; } catch (e) { return true; } })(),
   };
 
   // ------------------------------------------------------------------ plantillas
@@ -57,7 +59,7 @@
     }
     if (changed) {
       try { localStorage.setItem('dspbp.templates', JSON.stringify(S.templates)); } catch (e) { /* ignorar */ }
-      renderPalette();
+      renderBuildBar();
     }
   }
 
@@ -288,45 +290,44 @@
     await loadText(text, e.path, e.handle || null);
   });
 
-  // ------------------------------------------------------------------ paleta
-  // Paleta: grupos del menú de construcción del juego, plegables (se recuerda cuáles están cerrados)
-  let palClosed = new Set();
-  try { palClosed = new Set(JSON.parse(localStorage.getItem('dspbp.palClosed') || '[]')); } catch (e) { /* sin almacenamiento */ }
-  function renderPalette() {
-    const q = $('paletteSearch').value.trim().toLowerCase();
-    let html = '';
-    for (const g of IT.MENU) {
-      const list = g.ids.map((id) => IT.BUILDINGS[id]).filter((b) => b &&
-        (!q || b.name.toLowerCase().includes(q) || b.en.toLowerCase().includes(q) || String(b.id).includes(q)));
-      if (!list.length) continue;
-      const open = q || !palClosed.has(g.key);
-      html += `<div class="pal-cat${open ? ' open' : ''}" data-group="${g.key}"><span class="caret">${open ? '▾' : '▸'}</span>${esc(g.name)}<span class="n">${list.length}</span></div>`;
-      if (!open) continue;
-      for (const b of list) {
-        const ok = !!S.templates[b.id];
-        const active = S.placeItem === b.id && S.tool !== 'select' && S.tool !== 'paste';
-        const icon = b.icon ? `<img class="pal-icon" src="${b.icon}" alt="">` : `<span class="pal-swatch" style="background:${BELT_COLORS[b.id] || (IT.CATS[b.cat] || {}).color}"></span>`;
-        html += `<div class="pal-item${ok ? '' : ' disabled'}${active ? ' active' : ''}" data-id="${b.id}"
-          title="${esc(b.name)}${I18N.lang === 'en' ? '' : ' / ' + esc(b.en)} (${b.id})${ok ? '' : ' · ' + esc(t('pal.unknown'))}">
-          ${icon}<span class="pal-name">${esc(b.name)}</span></div>`;
-      }
-    }
-    $('palette').innerHTML = html || `<p class="muted small">${esc(t('pal.none'))}</p>`;
-  }
-
-  $('paletteSearch').addEventListener('input', renderPalette);
-  $('palette').addEventListener('click', (ev) => {
-    const cat = ev.target.closest('.pal-cat');
-    if (cat) {
-      const k = cat.dataset.group;
-      palClosed.has(k) ? palClosed.delete(k) : palClosed.add(k);
-      try { localStorage.setItem('dspbp.palClosed', JSON.stringify([...palClosed])); } catch (e) { /* ignorar */ }
-      renderPalette(); return;
-    }
-    const d = ev.target.closest('.pal-item'); if (!d || d.classList.contains('disabled')) return;
-    const id = +d.dataset.id;
+  // ------------------------------------------------------------------ barra de construcción
+  // Como la del juego: abajo, las categorías (teclas 1…8); al abrir una, sus edificios encima (F1, F2…).
+  const CAT_ICONS = {
+    power: '<path d="M13.5 2 5 13.5h5.2L9 22l9-12.5h-5.4z"/>',
+    collecting: '<path d="M4.2 21.2 2.8 19.8 12 10.6l1.4 1.4z"/><path d="M8.5 4.2c4.6-1.6 9.3.4 11.6 4.6l-2 1.2C16 6.8 12.8 5.3 9.3 6.3z"/>',
+    logistics: '<path d="M3 15.5 14.5 4h3L6 15.5zM6.5 20 18 8.5h3L9.5 20zM2.5 20.5l3-3v3z"/>',
+    storage: '<path d="M2 9.5 12 4l10 5.5V20h-3v-8.5H5V20H2z"/><path d="M7 13.5h10v1.8H7zM7 16.8h10v1.8H7z"/>',
+    production: '<path d="M2 20v-9l5 3v-3l5 3v-3l3 1.8V4h4.5L21 20z"/>',
+    transportation: '<path d="M12 4a8 8 0 0 1 7.7 5.8l-2.2.6A5.7 5.7 0 0 0 12 6.3v2.2L8 5.2 12 2zM12 20a8 8 0 0 1-7.7-5.8l2.2-.6a5.700 5.700 0 0 0 5.500 4.100v-2.200l4 3.300-4 3.200z"/>',
+    defense: '<path d="M3 20v-3h3l2-4 9.5-6 1.5 2.300-7 5.200 1 2.500h8v3z"/>',
+    cosmo: '<path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2.200a6.800 6.800 0 0 1 5.500 2.800L7.300 16.900A6.800 6.800 0 0 1 12 5.200zm6.500 4.900A6.800 6.800 0 0 1 9 18.100z"/>',
+  };
+  function pickBuild(id) {
+    if (!S.templates[id]) { toast(t('pal.unknown'), true); return; }
     if (!S.bp) newBlueprint();
     setTool(BP.BELTS.has(id) ? 'belt' : BP.SORTERS.has(id) ? 'sorter' : 'place', id);
+  }
+  function openBuildCat(i) {
+    S.buildCat = S.buildCat === i ? null : i;
+    if (S.tool !== 'select' && S.tool !== 'paste') setTool('select'); else renderBuildBar();
+  }
+  function renderBuildBar() {
+    const g = S.buildCat === null ? null : IT.MENU[S.buildCat];
+    $('buildCats').innerHTML = IT.MENU.map((c, i) =>
+      `<button class="bb-cat${S.buildCat === i ? ' on' : ''}" data-cat="${i}" title="${esc(c.name)} (${i + 1})"><svg viewBox="0 0 24 24">${CAT_ICONS[c.key]}</svg><sup>${i + 1}</sup></button>`).join('');
+    $('buildItems').innerHTML = !g ? '' : `<div class="bb-title">${esc(g.name)}</div><div class="bb-row">` + g.ids.map((id, j) => {
+      const b = IT.BUILDINGS[id], ok = !!S.templates[id];
+      const active = S.placeItem === id && S.tool !== 'select' && S.tool !== 'paste';
+      const icon = b.icon ? `<img src="${b.icon}" alt="">` : `<span class="pal-swatch" style="background:${BELT_COLORS[id] || (IT.CATS[b.cat] || {}).color}"></span>`;
+      return `<button class="bb-item${ok ? '' : ' disabled'}${active ? ' on' : ''}" data-id="${id}" title="${esc(b.name)}${I18N.lang === 'en' ? '' : ' / ' + esc(b.en)}${ok ? '' : ' · ' + esc(t('pal.unknown'))}">${icon}<sup>F${j + 1}</sup></button>`;
+    }).join('') + '</div>';
+  }
+  $('buildBar').addEventListener('mousedown', (ev) => ev.preventDefault());   // sin foco: las teclas siguen yendo al lienzo
+  $('buildBar').addEventListener('click', (ev) => {
+    const c = ev.target.closest('.bb-cat');
+    if (c) { openBuildCat(+c.dataset.cat); return; }
+    const d = ev.target.closest('.bb-item');
+    if (d) pickBuild(+d.dataset.id);
   });
 
   function setTool(tool, item) {
@@ -341,7 +342,7 @@
     };
     $('toolHint').textContent = hints[tool] || '';
     $('canvas').style.cursor = tool === 'select' ? 'default' : 'crosshair';
-    renderPalette();
+    renderBuildBar();
     requestDraw();
   }
   document.querySelectorAll('#toolbar .tool').forEach((b) => b.addEventListener('click', () => setTool(b.dataset.tool)));
@@ -382,8 +383,10 @@
     if (!S.bp || !S.bp.buildings.length) { S.view = { cx: 10, cy: 5, scale: 24 }; requestDraw(); return; }
     const bb = bounds(S.bp.buildings);
     const w = bb.maxX - bb.minX + 6, h = bb.maxY - bb.minY + 6;
-    S.view.cx = (bb.minX + bb.maxX) / 2; S.view.cy = (bb.minY + bb.maxY) / 2;
-    S.view.scale = Math.max(2, Math.min(60, Math.min(W / w, H / h)));
+    // la barra de construcción tapa la parte de abajo del lienzo: se encuadra en lo que queda libre
+    const bar = Math.min(150, H / 4);
+    S.view.scale = Math.max(2, Math.min(60, Math.min(W / w, (H - bar) / h)));
+    S.view.cx = (bb.minX + bb.maxX) / 2; S.view.cy = (bb.minY + bb.maxY) / 2 - bar / 2 / S.view.scale;
     requestDraw();
   }
 
@@ -887,6 +890,69 @@
     }
   }
 
+  // Cobertura eléctrica: área de suministro de cada torre (y su longitud de conexión, a rayas, si está seleccionada)
+  function powerCircle(x, y, r, strong) {
+    const [px, py] = w2s(x, y), s = S.view.scale;
+    ctx.beginPath(); ctx.arc(px, py, r.cover * s, 0, Math.PI * 2);
+    ctx.fillStyle = strong ? 'rgba(79,195,247,.14)' : 'rgba(79,195,247,.055)'; ctx.fill();
+    ctx.strokeStyle = strong ? 'rgba(79,195,247,.95)' : 'rgba(79,195,247,.3)'; ctx.lineWidth = strong ? 1.5 : 1; ctx.stroke();
+    if (!strong) return;
+    ctx.beginPath(); ctx.arc(px, py, r.conn * s, 0, Math.PI * 2);
+    ctx.setLineDash([8, 6]); ctx.strokeStyle = 'rgba(240,160,48,.7)'; ctx.stroke(); ctx.setLineDash([]);
+  }
+  function drawPower(offsetOf) {
+    if (!S.power) return;
+    const bs = S.bp.buildings;
+    for (const n of S.power.nodes) {
+      const b = bs[n.i]; if (!b) continue;
+      const [ox, oy] = offsetOf(b);
+      powerCircle(b.x + ox, b.y + oy, n, S.sel.has(b));
+    }
+    // enlaces entre torres, a rayas como en el juego
+    ctx.setLineDash([6, 5]); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(230,236,245,.55)';
+    ctx.beginPath();
+    for (const [i, j] of S.power.links) {
+      const p = bs[i], q = bs[j]; if (!p || !q) continue;
+      const [ax, ay] = offsetOf(p), [bx, by] = offsetOf(q);
+      ctx.moveTo(...w2s(p.x + ax, p.y + ay)); ctx.lineTo(...w2s(q.x + bx, q.y + by));
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  // Torre que se está colocando: su área, su alcance de conexión y a qué torres se engancharía
+  function drawPowerGhost(g) {
+    const r = PW.radius(g.itemId);
+    powerCircle(g.x, g.y, r, true);
+    ctx.setLineDash([6, 5]); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(170,150,255,.95)';
+    ctx.beginPath();
+    for (const n of S.power ? S.power.nodes : []) {
+      if (Math.hypot(n.x - g.x, n.y - g.y) > Math.max(n.conn, r.conn) + 0.05) continue;
+      ctx.moveTo(...w2s(g.x, g.y)); ctx.lineTo(...w2s(n.x, n.y));
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  // Rayo rojo en los edificios que quedan fuera de toda área de suministro (abajo a la derecha)
+  function drawPowerMarks(list, offsetOf) {
+    const s = S.view.scale;
+    if (!S.unpowered || !S.unpowered.size || s < 3) return;
+    for (const b of list) {
+      if (!S.unpowered.has(b)) continue;
+      const [ox, oy] = offsetOf(b);
+      if (isSorter(b)) {
+        if (s < 10) continue;
+        const [x, y] = w2s(b.x + ox, b.y + oy);   // en su inicio, que es donde tiene que llegar la cobertura
+        ctx.fillStyle = '#e05555'; ctx.beginPath(); ctx.arc(x, y, Math.max(3, s * 0.14), 0, Math.PI * 2); ctx.fill();
+        continue;
+      }
+      const fp = footprint(b), k = Math.max(6, Math.min(s * 0.42, 13));
+      const [x, y] = w2s(b.x + Math.max(0, fp.w / 2 - 0.45) + ox, b.y - Math.max(0, fp.h / 2 - 0.45) + oy);
+      ctx.fillStyle = '#e05555'; ctx.beginPath(); ctx.arc(x, y, k, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.beginPath();
+      ctx.moveTo(x + k * 0.15, y - k * 0.7); ctx.lineTo(x - k * 0.45, y + k * 0.1); ctx.lineTo(x - k * 0.05, y + k * 0.1);
+      ctx.lineTo(x - k * 0.15, y + k * 0.7); ctx.lineTo(x + k * 0.45, y - k * 0.1); ctx.lineTo(x + k * 0.05, y - k * 0.1);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+
   function draw() {
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ctx.fillStyle = '#0f1218'; ctx.fillRect(0, 0, W, H);
@@ -910,6 +976,8 @@
       ctx.strokeRect(x0, y0, x1 - x0, y1 - y0); ctx.setLineDash([]);
     }
 
+    if (S.showPower) drawPower(offsetOf);
+
     const margin = 8;
     const [vx0, vy1] = s2w(0, 0), [vx1, vy0] = s2w(W, H);
     const visible = bs.filter((b) => !(b.x < vx0 - margin || b.x > vx1 + margin || b.y < vy0 - margin || b.y > vy1 + margin));
@@ -931,6 +999,7 @@
     drawList(visible.filter(isSorter));
     if (S.showLabels) drawOutputIcons(visible, offsetOf);
     if (S.showChecks) { drawFlowMarks(visible, offsetOf); drawSimMarks(visible, offsetOf); }
+    if (S.showPower) drawPowerMarks(visible, offsetOf);
 
     // choques: los del blueprint (salvo lo que se está moviendo) y los de los fantasmas
     if (moving && (moving.dx || moving.dy)) {
@@ -946,6 +1015,7 @@
       const g = makeBuilding(S.placeItem, gx, gy, S.ghostRot * 90);
       if (g && g.itemId === 2020) g.modelIndex = S.splitModel;
       if (g) applyStack(g);
+      if (g && S.showPower && PW.radius(g.itemId)) drawPowerGhost(g);
       if (g) { drawBuilding(g, { alpha: 0.55, get: () => null, offsetOf: () => [0, 0] }); drawHits(COL.find([g], bs)); }
     }
     if (S.tool === 'belt' && S.placeItem) {
@@ -1131,7 +1201,9 @@
   function escapeAction() {
     if ($('recipePop')) { closeRecipePicker(); return; }
     if (S.drag && S.drag.type !== 'pan') { S.drag = null; requestDraw(); return; }
-    if (S.tool !== 'select') setTool('select'); else { S.sel.clear(); refresh(); }
+    if (S.tool !== 'select') setTool('select');
+    else if (S.buildCat !== null) { S.buildCat = null; renderBuildBar(); }
+    else { S.sel.clear(); refresh(); }
   }
   // X+clic: borrar lo que hay bajo el cursor; con Mayús, si es una cinta, toda la cinta conectada del mismo tipo
   function eraseAt(line) {
@@ -2018,6 +2090,15 @@
     const k = ev.key.toLowerCase(), ctrl = ev.ctrlKey || ev.metaKey;
     if (ctrl && k === 's') { ev.preventDefault(); save(); return; }
     if (ctrl && k === 'o') { ev.preventDefault(); openFile(); return; }
+    // barra de construcción, como en el juego: 1…8 abre una categoría y F1…F10 elige el edificio
+    if (!ctrl && !ev.altKey && /^[1-8]$/.test(ev.key) && !$('portPop')) { ev.preventDefault(); openBuildCat(+ev.key - 1); return; }
+    const fk = /^F(\d+)$/.exec(ev.key);
+    if (fk && S.buildCat !== null && +fk[1] <= 10 && !ctrl && !ev.altKey) {
+      ev.preventDefault();
+      const id = IT.MENU[S.buildCat].ids[+fk[1] - 1];
+      if (id) pickBuild(id);
+      return;
+    }
     if (!S.bp) return;
     if (ctrl && k === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
     if (ctrl && k === 'y') { ev.preventDefault(); redo(); return; }
@@ -2105,6 +2186,8 @@
     S.flowBp = S.bp; S.flowKey = k;
     S.flow = S.bp ? FL.analyze(S.bp.buildings) : null;
     S.sim = S.bp ? SM.run(S.bp.buildings, { openEnds: S.openEnds, fillDepots: S.fillDepots }) : null;
+    S.power = S.bp ? PW.analyze(S.bp.buildings, COL.body) : null;
+    S.unpowered = new Set(S.power ? [...S.power.unpowered].map((i) => S.bp.buildings[i]) : []);
     S.flowMarks = new Map();
     if (S.flow) for (const x of S.flow.issues) if (x.level === 'error' || !S.flowMarks.has(x.i)) S.flowMarks.set(x.i, x.level);
   }
@@ -2155,13 +2238,82 @@
     return `<table>${rows}</table>`;
   }
 
+  // Edificios necesarios: una ficha por tipo con su cantidad, en el orden del menú del juego
+  function countTiles(list) {
+    const counts = new Map();
+    for (const b of list) counts.set(b.itemId, (counts.get(b.itemId) || 0) + 1);
+    const ord = (id) => (IT.MENU_ORDER[id] === undefined ? 9999 : IT.MENU_ORDER[id]);
+    return `<div class="ctiles">${[...counts].sort((x, y) => ord(x[0]) - ord(y[0])).map(([id, n]) => {
+      const info = IT.buildingInfo(id);
+      return `<button class="ctile" data-selitem="${id}" title="${esc(info.name)}">${info.icon ? `<img src="${info.icon}" alt="">` : `<span class="cshort">${esc(info.short || '')}</span>`}<b>${I18N.num(n)}</b></button>`;
+    }).join('')}</div>`;
+  }
+
+  // Producción del blueprint: lo que fabrica, lo que necesita que le traigan y los intermedios, por minuto.
+  // Sale de la simulación (cada máquina a la velocidad a la que va de verdad); «de N» es su tope a pleno rendimiento.
+  function production() {
+    const rows = new Map();
+    const at = (id) => rows.get(+id) || rows.set(+id, { id: +id, made: 0, used: 0, maxMade: 0, maxUsed: 0 }).get(+id);
+    if (S.sim) for (const m of S.sim.machines.values()) {
+      for (const x in m.prod) { const r = at(x); r.made += m.prod[x] * m.r; r.maxMade += m.prod[x]; }
+      for (const x in m.need) { const r = at(x); r.used += m.need[x] * m.r; r.maxUsed += m.need[x]; }
+    }
+    const list = [...rows.values()];
+    // sin nada conectado no se mueve nada: se enseña lo que haría a pleno rendimiento
+    const idle = list.length > 0 && list.every((r) => r.made < 1e-6);
+    if (idle) for (const r of list) { r.made = r.maxMade; r.used = r.maxUsed; }
+    const makes = [], needs = [], mid = [];
+    for (const r of list) {
+      r.net = r.made - r.used; r.maxNet = r.maxMade - r.maxUsed;
+      if (r.maxNet > 1e-6 || r.net > 1e-6) makes.push(r); else if (r.maxNet < -1e-6 || r.net < -1e-6) needs.push(r); else mid.push(r);
+    }
+    makes.sort((x, y) => y.maxNet - x.maxNet); needs.sort((x, y) => x.maxNet - y.maxNet); mid.sort((x, y) => y.maxMade - x.maxMade);
+    return { makes, needs, mid, idle, machines: S.sim ? S.sim.machines.size : 0 };
+  }
+  function productionHTML() {
+    const p = production();
+    if (!p.machines) return '';
+    const row = (r, v, max) => `<div class="prow"><span class="ioi">${itemIcon(r.id, 26)}</span><span class="ion">${esc(IT.itemName(r.id))}</span><span class="pnum"><b>${fmtRate(Math.abs(v))}</b>${!p.idle && Math.abs(v) < Math.abs(max) * 0.995 ? `<span class="muted small"> ${t('prod.of', { max: fmtRate(Math.abs(max)) })}</span>` : ''}</span></div>`;
+    const midRow = (r) => `<div class="prow small"><span class="ioi">${itemIcon(r.id, 20)}</span><span class="ion">${esc(IT.itemName(r.id))}</span><span class="muted">${t('prod.midRow', { a: fmtRate(r.made), b: fmtRate(r.used) })}</span></div>`;
+    const tt = RT.totals(S.bp.buildings);
+    return `<hr class="sep"><h3>${t('prod.title')} <span class="muted small">${t('prod.perMin')}</span></h3>
+      ${p.idle ? `<p class="warn-text small">${t('prod.idle')}</p>` : ''}
+      ${p.makes.length ? `<div class="plabel ok-text">${t('prod.makes')}</div>${p.makes.map((r) => row(r, r.net, r.maxNet)).join('')}` : ''}
+      ${p.needs.length ? `<div class="plabel warn-text">${t('prod.needs')}</div>${p.needs.map((r) => row(r, r.net, r.maxNet)).join('')}` : ''}
+      ${p.mid.length ? `<details class="pmid"><summary>${t('prod.mid', { n: p.mid.length })}</summary>${p.mid.map(midRow).join('')}</details>` : ''}
+      <p class="muted small">${t('prod.note')}${tt.notes.length ? ' ' + esc(tt.notes.join(' · ')) + '.' : ''}</p>`;
+  }
+  // Energía del blueprint: consumo, generación y cuántos edificios quedan fuera de las áreas de suministro
+  function powerSummaryHTML() {
+    const tt = RT.totals(S.bp.buildings), pw = S.power;
+    if (!tt.work && !tt.gen && !(pw && (pw.consumers || pw.nodes.length))) return '';
+    let cov = '';
+    if (pw && pw.consumers) {
+      if (!pw.nodes.length) cov = `<p class="muted small">${t('pw.noNodes')}</p>`;
+      else if (pw.unpowered.size) cov = `<p class="small"><span class="bad-text">⚡ ${t('pw.bad', { n: pw.unpowered.size, total: pw.consumers })}</span> · <span class="link" data-act="selUnpowered">${t('pw.sel')}</span><br><span class="muted">${t('pw.badNote')}</span></p>`;
+      else cov = `<p class="ok-text small">⚡ ${t('pw.ok', { n: pw.consumers })}</p>`;
+    }
+    if (pw && pw.networks > 1) cov += `<p class="small"><span class="warn-text">${t('pw.loose', { n: pw.loose.size, nets: pw.networks })}</span> · <span class="link" data-act="selLoose">${t('pw.sel')}</span><br><span class="muted">${t('pw.looseNote')}</span></p>`;
+    else if (pw && pw.nodes.length > 1) cov += `<p class="ok-text small">${t('pw.linked', { n: pw.nodes.length })}</p>`;
+    return `<hr class="sep"><h3>${t('power.title')}</h3>
+      ${field(t('power.use'), t('totals.power', { work: fmtPower(tt.work), idle: fmtPower(tt.idle) }))}
+      ${tt.gen ? field(t('power.gen'), fmtPower(tt.gen)) : ''}${cov}`;
+  }
+
   function inspectorBlueprint() {
     const h = S.bp.header;
     const date = BP.ticksToDate(h.time);
     const icons = h.icons.map((v, i) => `<input type="number" data-icon="${i}" value="${v}" title="${esc(IT.itemName(v))}">`).join('');
     const iconNames = h.icons.filter((v) => v).map((v) => esc(IT.itemName(v))).join(', ') || '—';
-    return `<h3>${t('bp.title')}</h3>
-      ${field(t('bp.name'), `<input id="hName" value="${esc(h.shortDesc)}">`)}
+    return `<input id="hName" class="bp-name" value="${esc(h.shortDesc)}" placeholder="${esc(t('bp.name'))}">
+      <h3>${t('sum.buildings', { n: S.bp.buildings.length })}</h3>
+      ${S.bp.buildings.length ? countTiles(S.bp.buildings) + `<p class="muted small">${t('bp.clickType')}</p>` : `<p class="muted small">${t('sum.empty')}</p>`}
+      ${productionHTML()}
+      ${powerSummaryHTML()}
+      ${checksHTML()}
+      ${simHTML()}
+      <hr class="sep">
+      <h3>${t('bp.title')}</h3>
       ${field(t('bp.desc'), `<textarea id="hDesc" rows="3">${esc(h.desc)}</textarea>`)}
       <div class="field"><label>${t('bp.icons')}</label><div class="icons-row">${icons}</div></div>
       <p class="muted small" style="margin:0 0 4px 101px">${iconNames}</p>
@@ -2169,14 +2321,7 @@
       ${field(t('bp.version'), `<span class="muted">${esc(h.gameVersion)}</span>`)}
       ${field(t('bp.date'), `<span class="muted">${date ? date.toLocaleString(I18N.lang) : '—'}</span>`)}
       ${field(t('bp.hash'), S.bp.hashOk ? `<span class="badge ok">${t('bp.hashOk')}</span>` : `<span class="badge bad">${t('bp.hashBad')}</span>`)}
-      ${field(t('bp.size'), `<span class="muted">${S.bp.areas[0] ? S.bp.areas[0].size.x + ' × ' + S.bp.areas[0].size.y : '—'} (${t('bp.areas', { n: S.bp.areas.length })})</span>`)}
-      ${checksHTML()}
-      ${simHTML()}
-      ${totalsHTML(S.bp.buildings, t('bp.totals'))}
-      <hr class="sep">
-      <h3>${t('bp.buildings', { n: S.bp.buildings.length })}</h3>
-      <p class="muted small">${t('bp.clickType')}</p>
-      ${countTable(S.bp.buildings, 'selitem')}`;
+      ${field(t('bp.size'), `<span class="muted">${S.bp.areas[0] ? S.bp.areas[0].size.x + ' × ' + S.bp.areas[0].size.y : '—'} (${t('bp.areas', { n: S.bp.areas.length })})</span>`)}`;
   }
 
   function connLabel(idx) {
@@ -2353,11 +2498,23 @@
       <div class="muted small">${t('rate.outputs')}</div>${src.out.map(([id, n], i) => ioRow(id, n, m.out[i][1])).join('')}
     </div>`;
   }
+  // Cobertura (torres: su área; consumidores: si les llega) y altura que ocupa el edificio
+  function coverHTML(b) {
+    const r = PW.radius(b.itemId), m = (c) => t('pw.cells', { c: I18N.num(Math.round(c * 10) / 10), m: I18N.num(Math.round(c * PW.CELL * 10) / 10) });
+    let html = '';
+    if (r) html += field(t('pw.cover'), m(r.cover)) + field(t('pw.conn'), m(r.conn)) + `<p class="muted small">${t('pw.connNote')}</p>` + (r.est ? `<p class="muted small">${t('pw.est')}</p>` : '');
+    else if (PW.consumes(b) && S.power && S.power.nodes.length) html += field(t('pw.state'), S.unpowered.has(b) ? `<span class="bad-text">⚡ ${t('pw.uncovered')}</span>` : `<span class="ok-text">${t('pw.covered')}</span>`);
+    if (!isBelt(b) && !isSorter(b)) {
+      const hh = window.DSPCollision.HEIGHT[b.itemId];
+      html += field(t('b.height'), hh === undefined ? `<span class="muted small">${t('b.heightUnknown')}</span>` : t('b.heightN', { n: hh }));
+    }
+    return html;
+  }
   function powerHTML(b) {
     const p = RT.power(b);
-    if (!p) return '';
-    if (p.work < 0) return `<h4>${t('power.title')}</h4>${field(t('power.gen'), fmtPower(-p.work))}`;
-    return `<h4>${t('power.use')}</h4>${field(t('power.work'), fmtPower(p.work))}${field(t('power.idle'), fmtPower(p.idle))}`;
+    if (!p) return coverHTML(b);
+    if (p.work < 0) return `<h4>${t('power.title')}</h4>${field(t('power.gen'), fmtPower(-p.work))}${coverHTML(b)}`;
+    return `<h4>${t('power.use')}</h4>${field(t('power.work'), fmtPower(p.work))}${field(t('power.idle'), fmtPower(p.idle))}${coverHTML(b)}`;
   }
   // Comprobación de suministro (js/flow.js)
   const LEVEL = { error: '✗', warn: '!' };
@@ -2757,6 +2914,8 @@
     const act = t.dataset.act, b = [...S.sel][0];
     if (act === 'setProp' || act === 'pickProp') { propAction(t); return; }
     if (act === 'portOut') { setPortOut(S.bp.buildings[+t.dataset.st], +t.dataset.k, +t.dataset.v); return; }
+    if (act === 'selUnpowered') { S.sel = new Set(S.unpowered); refresh(); return; }
+    if (act === 'selLoose') { S.sel = new Set([...S.power.loose].map((i) => S.bp.buildings[i])); refresh(); return; }
     if (act === 'tier') setTier(+t.dataset.id);
     else if (act === 'lineSel') { S.sel = beltLine(b, true); refresh(); }
     else if (act === 'split') { pushUndo(); for (const x of S.sel) if (x.itemId === 2020) x.modelIndex = +t.dataset.id; refresh(); }
@@ -2846,7 +3005,8 @@
   insp.addEventListener('click', (ev) => {
     const t = ev.target.closest('[data-act]') && !ev.target.closest('#recipePop') ? ev.target.closest('[data-act]') : ev.target;
     if (t.dataset.act) { inspectorAction(t); return; }
-    if (t.dataset.selitem) { S.sel = new Set(S.bp.buildings.filter((b) => b.itemId === +t.dataset.selitem)); refresh(); }
+    const si = t.closest('[data-selitem]');
+    if (si) { S.sel = new Set(S.bp.buildings.filter((b) => b.itemId === +si.dataset.selitem)); refresh(); }
     else if (t.dataset.keepitem || t.closest('[data-keepitem]')) {
       const id = +(t.dataset.keepitem || t.closest('[data-keepitem]').dataset.keepitem);
       S.sel = new Set([...S.sel].filter((b) => b.itemId === id)); refresh();
@@ -2934,6 +3094,12 @@
   $('btnCleanSorters').onclick = cleanSorters;
   $('levelSel').onchange = (e) => { setLevel(e.target.value === 'all' ? 'all' : +e.target.value); e.target.blur(); };
   $('chkLabels').onchange = (e) => { S.showLabels = e.target.checked; requestDraw(); };
+  $('chkPower').checked = S.showPower;
+  $('chkPower').onchange = (e) => {
+    S.showPower = e.target.checked;
+    try { localStorage.setItem('dspShowPower', e.target.checked ? '1' : '0'); } catch (err) { /* sin almacenamiento */ }
+    requestDraw();
+  };
   $('chkChecks').checked = S.showChecks;
   $('chkChecks').onchange = (e) => {
     S.showChecks = e.target.checked;
@@ -3204,7 +3370,7 @@ Editor: select(indices) · selection() · undo() · redo() · fit() · setLang('
 
   // ------------------------------------------------------------------ inicio
   loadTemplates();
-  renderPalette();
+  renderBuildBar();
   setTool('select');
   resize();
   refresh();

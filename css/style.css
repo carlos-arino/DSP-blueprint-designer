@@ -42,7 +42,7 @@ main { display: flex; height: calc(100% - 46px); }
 #right { width: 300px; border-left: 1px solid var(--line); overflow-y: auto; }
 .panel { padding: 10px; background: var(--panel); }
 .panel.grow { flex: 1; display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--line); }
-#librarySection { max-height: 38%; display: flex; flex-direction: column; min-height: 80px; }
+#librarySection { flex: 1; display: flex; flex-direction: column; min-height: 80px; }
 .list { overflow-y: auto; flex: 1; min-height: 0; }
 #paletteSearch { width: 100%; margin-bottom: 6px; }
 
@@ -96,7 +96,7 @@ main { display: flex; height: calc(100% - 46px); }
 dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; width: min(700px, 90vw); }
 dialog::backdrop { background: rgba(0,0,0,.6); }
 
-#toast { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); background: #2c3445; color: var(--text);
+#toast { position: fixed; top: 100px; left: 50%; transform: translateX(-50%); background: #2c3445; color: var(--text);
   padding: 8px 16px; border-radius: 6px; border: 1px solid var(--line); opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; }
 #toast.show { opacity: 1; }
 #toast.err { border-color: var(--danger); color: #ffb0b0; }
@@ -216,3 +216,36 @@ table.rates td:first-child { width: 20px; }
 .simbar span.zero { background: var(--danger); }
 .simbar b { position: relative; display: block; text-align: center; font-size: 11px; line-height: 16px; color: #fff; text-shadow: 0 0 3px #000; }
 .issue .lv { min-width: 12px; width: auto; }
+
+/* Barra de construcción (como la del juego): categorías abajo, edificios de la categoría encima */
+#buildBar { position: absolute; left: 8px; right: 8px; bottom: 10px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  z-index: 5; user-select: none; pointer-events: none; }
+#buildBar > * { pointer-events: auto; }
+#buildCats, .bb-row { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
+#buildItems:not(:empty) { padding: 6px 10px 8px; background: rgba(16, 24, 34, .9); border: 1px solid #2c4254; border-bottom-color: #7a3030; border-radius: 6px; }
+.bb-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
+.bb-cat, .bb-item { position: relative; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 4px;
+  background: linear-gradient(#2b4250, #1f313d); border: 1px solid #3c5565; clip-path: polygon(9px 0, 100% 0, 100% 100%, 0 100%, 0 9px); }
+.bb-cat { width: 50px; height: 46px; }
+.bb-cat svg { width: 27px; height: 27px; fill: #fff; }
+.bb-item { width: 58px; height: 58px; }
+.bb-item img { width: 46px; height: 46px; object-fit: contain; }
+.bb-cat:hover, .bb-item:hover { background: linear-gradient(#3d6071, #2b4654); border-color: var(--accent2); }
+.bb-cat.on, .bb-item.on { background: linear-gradient(#8fc3d6, #5d93a8); border-color: #c8ecf8; }
+.bb-cat sup, .bb-item sup { position: absolute; top: 1px; right: 3px; font-size: 10px; font-weight: 700; color: #fff; text-shadow: 0 0 3px #000; line-height: 1.2; }
+.bb-item.disabled { opacity: .35; }
+
+/* Resumen del blueprint: edificios necesarios y producción */
+.bp-name { width: 100%; font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+.ctiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 5px; margin-bottom: 4px; }
+.ctile { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 4px 2px 3px; background: #1d2330; }
+.ctile img { width: 40px; height: 40px; object-fit: contain; }
+.ctile .cshort { height: 40px; display: flex; align-items: center; color: var(--muted); }
+.ctile b { font-size: 16px; line-height: 1.1; color: var(--accent2); font-variant-numeric: tabular-nums; }
+.plabel { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin: 8px 0 2px; }
+.prow { display: flex; align-items: center; gap: 7px; margin: 3px 0; }
+.prow .ion { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prow .pnum { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.prow .pnum b { font-size: 15px; color: var(--text); }
+.pmid { margin: 8px 0 4px; }
+.pmid summary { cursor: pointer; color: var(--muted); font-size: 12px; }
