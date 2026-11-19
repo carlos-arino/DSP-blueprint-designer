@@ -263,8 +263,26 @@
     }
   }
 
+  // Paneles laterales: se ocultan y se muestran con las pestañas del borde del lienzo. El izquierdo (biblioteca)
+  // solo sale por sí solo cuando hay una carpeta abierta; el derecho recuerda cómo se dejó.
+  const PANELS = { left: null, right: (() => { try { return localStorage.getItem('dspbp.right') !== '0'; } catch (e) { return true; } })() };
+  function applyPanels() {
+    const l = PANELS.left === null ? S.library.length > 0 : PANELS.left, r = PANELS.right;
+    $('left').classList.toggle('hidden', !l); $('right').classList.toggle('hidden', !r);
+    $('tglLeft').textContent = l ? '◀' : '▶'; $('tglRight').textContent = r ? '▶' : '◀';
+    $('tglLeft').title = t(l ? 'panel.hideLeft' : 'panel.showLeft'); $('tglRight').title = t(r ? 'panel.hideRight' : 'panel.showRight');
+  }
+  $('tglLeft').onclick = () => { PANELS.left = $('left').classList.contains('hidden'); applyPanels(); };
+  $('tglRight').onclick = () => {
+    PANELS.right = !PANELS.right;
+    try { localStorage.setItem('dspbp.right', PANELS.right ? '1' : '0'); } catch (e) { /* sin almacenamiento */ }
+    applyPanels();
+  };
+
   function renderLibrary() {
     const el = $('library');
+    if (S.library.length !== S.libShown) { S.libShown = S.library.length; PANELS.left = null; }   // carpeta recién abierta: se enseña
+    applyPanels();
     if (!S.library.length) { el.innerHTML = `<p class="muted small">${esc(t('lib.empty'))}</p>`; return; }
     let html = '', lastDir = null;
     for (let i = 0; i < S.library.length; i++) {
@@ -2300,12 +2318,24 @@
       ${tt.gen ? field(t('power.gen'), fmtPower(tt.gen)) : ''}${cov}`;
   }
 
+  // Disposición de los iconos del blueprint, con los nombres del juego (nº de iconos - variante).
+  // El valor guardado es nº × 10 + variante − 1 (en tus blueprints: 10, 20, 21 y 50); 0 = sin iconos.
+  const ICON_LAYOUTS = [0, 10, 11, 20, 21, 22, 23, 24, 30, 31, 32, 33, 40, 41, 50, 51];
+  const layoutName = (v) => (v === 0 ? t('bp.layout.none') : ICON_LAYOUTS.includes(v) ? `${Math.floor(v / 10)}-${v % 10 + 1}` : `#${v}`);
+  function bpIconsHTML(h) {
+    const vals = ICON_LAYOUTS.includes(h.layout) ? ICON_LAYOUTS : [...ICON_LAYOUTS, h.layout];
+    const n = Math.max(0, Math.min(5, Math.floor(h.layout / 10)));
+    const tiles = h.icons.map((v, i) => `<button class="otile bicon${i < n ? '' : ' off'}" data-act="pickBpIcon" data-i="${i}" title="${esc(v ? IT.itemName(v) : t('bp.noIcon'))}">${v ? itemIcon(v, 26) : '<span class="onone">+</span>'}<sup>${i + 1}</sup></button>`).join('');
+    return `${field(t('bp.layout'), `<select id="hLayout">${vals.map((v) => `<option value="${v}"${v === h.layout ? ' selected' : ''}>${esc(layoutName(v))}</option>`).join('')}</select>`)}
+      <div class="field"><label>${t('bp.icons')}</label><div class="bicons">${tiles}</div></div>
+      <p class="muted small" style="margin:0 0 4px 101px">${t('bp.iconsHint', { n })}</p>`;
+  }
+
   function inspectorBlueprint() {
     const h = S.bp.header;
     const date = BP.ticksToDate(h.time);
-    const icons = h.icons.map((v, i) => `<input type="number" data-icon="${i}" value="${v}" title="${esc(IT.itemName(v))}">`).join('');
-    const iconNames = h.icons.filter((v) => v).map((v) => esc(IT.itemName(v))).join(', ') || '—';
     return `<input id="hName" class="bp-name" value="${esc(h.shortDesc)}" placeholder="${esc(t('bp.name'))}">
+      ${bpIconsHTML(h)}
       <h3>${t('sum.buildings', { n: S.bp.buildings.length })}</h3>
       ${S.bp.buildings.length ? countTiles(S.bp.buildings) + `<p class="muted small">${t('bp.clickType')}</p>` : `<p class="muted small">${t('sum.empty')}</p>`}
       ${productionHTML()}
@@ -2315,9 +2345,6 @@
       <hr class="sep">
       <h3>${t('bp.title')}</h3>
       ${field(t('bp.desc'), `<textarea id="hDesc" rows="3">${esc(h.desc)}</textarea>`)}
-      <div class="field"><label>${t('bp.icons')}</label><div class="icons-row">${icons}</div></div>
-      <p class="muted small" style="margin:0 0 4px 101px">${iconNames}</p>
-      ${field(t('bp.layout'), `<input type="number" id="hLayout" value="${h.layout}" title="${esc(t('bp.layout.tip'))}">`)}
       ${field(t('bp.version'), `<span class="muted">${esc(h.gameVersion)}</span>`)}
       ${field(t('bp.date'), `<span class="muted">${date ? date.toLocaleString(I18N.lang) : '—'}</span>`)}
       ${field(t('bp.hash'), S.bp.hashOk ? `<span class="badge ok">${t('bp.hashOk')}</span>` : `<span class="badge bad">${t('bp.hashBad')}</span>`)}
@@ -2914,6 +2941,11 @@
     const act = t.dataset.act, b = [...S.sel][0];
     if (act === 'setProp' || act === 'pickProp') { propAction(t); return; }
     if (act === 'portOut') { setPortOut(S.bp.buildings[+t.dataset.st], +t.dataset.k, +t.dataset.v); return; }
+    if (act === 'pickBpIcon') {
+      const h = S.bp.header, i = +t.dataset.i;
+      openItemPicker(t, h.icons[i] || 0, I18N.t('bp.noIcon'), (id) => { pushUndo(); h.icons[i] = +id || 0; setDirty(true); renderInspector(); });
+      return;
+    }
     if (act === 'selUnpowered') { S.sel = new Set(S.unpowered); refresh(); return; }
     if (act === 'selLoose') { S.sel = new Set([...S.power.loose].map((i) => S.bp.buildings[i])); refresh(); return; }
     if (act === 'tier') setTier(+t.dataset.id);
@@ -3033,7 +3065,7 @@
     const h = S.bp.header;
     if (t.id === 'hName') { pushUndo(); h.shortDesc = t.value; setDirty(true); return; }
     if (t.id === 'hDesc') { pushUndo(); h.desc = t.value; return; }
-    if (t.id === 'hLayout') { pushUndo(); h.layout = parseInt(t.value, 10) || 10; return; }
+    if (t.id === 'hLayout') { pushUndo(); const v = parseInt(t.value, 10); h.layout = Number.isNaN(v) ? 10 : v; setDirty(true); renderInspector(); return; }
     if (t.dataset.icon !== undefined) { pushUndo(); h.icons[+t.dataset.icon] = parseInt(t.value, 10) || 0; renderInspector(); return; }
     if (t.dataset.p) { propChange(t); return; }
     if (t.id === 'fillDepots') { S.fillDepots = t.checked; try { localStorage.setItem('dspFillDepots', t.checked ? '1' : '0'); } catch (e) { /* sin almacenamiento */ } refresh(); return; }
@@ -3363,6 +3395,7 @@ Editor: select(indices) · selection() · undo() · redo() · fit() · setLang('
     if (S.library.length) renderLibrary(); else if (S.dirHandle) $('library').innerHTML = `<p class="muted small">${esc(t('lib.empty'))}</p>`;
     if (S.library.length && !S.dirHandle) $('libPath').textContent = t('lib.readonly');
     setDirty(S.dirty);
+    applyPanels();
     setTool(S.tool, S.placeItem);   // texto de ayuda y paleta
     refresh();                      // inspector, avisos, barra de estado
   });
@@ -3370,6 +3403,7 @@ Editor: select(indices) · selection() · undo() · redo() · fit() · setLang('
 
   // ------------------------------------------------------------------ inicio
   loadTemplates();
+  applyPanels();
   renderBuildBar();
   setTool('select');
   resize();
