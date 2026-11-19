@@ -6,7 +6,15 @@
 //     supplied: Map(índice de máquina → Set de objetos que le llegan)
 //     moves:    Map(índice de clasificador → Set de objetos que mueve)
 //     issues:   [{ level: 'error' | 'warn', kind, i, msg, items }]   (msg en el idioma de js/i18n.js)
+//     inc:      proliferado (niveles 0 = nada, 1…3 = Mk.I…Mk.III):
+//                 belts    Map(cinta → { objeto: nivel }) con el que sale de esa casilla
+//                 machines Map(máquina → nivel) el menor de sus entradas (así lo aplica el juego)
+//                 coaters  Map(pulverizador → { belt, feed, item, level, own, spray: Set de objetos que rocía })
 //   }
+//
+// Pulverizador: rocía lo que pasa por la cinta de su casilla (a su altura) con el proliferador que lleva la
+// cinta que lo cruza un nivel más arriba, a una casilla del centro. No rebaja lo que ya viene rociado igual o mejor.
+// Lo que sale de una máquina, de una estación, de un monitor o de un distribuidor va sin proliferar.
 //
 // Fuentes de productos: cintas con etiqueta (se supone que traen ese producto), puertos de salida de
 // estaciones (el producto elegido), salidas de máquinas (su receta), almacenes (lo que les entra, sus filtros y
@@ -129,6 +137,105 @@
       });
     }
 
+    // ------------------------------------------------------------ proliferado
+    const PRO = (RT && RT.PROLIF) || {};
+    const coaters = new Map(), coaterOn = new Map();   // pulverizador → datos; cinta del producto → nivel con el que rocía
+    bs.forEach((b, i) => {
+      if (b.itemId !== 2313) return;
+      const a = (b.yaw || 0) * Math.PI / 180, z = Math.round(b.z || 0);
+      const belt = beltAtCell.get(`${Math.round(b.x)},${Math.round(b.y)},${z}`);
+      const feed = beltAtCell.get(`${Math.round(b.x - Math.sin(a))},${Math.round(b.y - Math.cos(a))},${z + 1}`);
+      let item = 0;
+      if (feed !== undefined) for (const x of get(items, feed)) if (PRO[x] && (PRO[x] > (PRO[item] || 0))) item = x;
+      const level = PRO[item] || 0;
+      coaters.set(i, { belt: belt === undefined ? -1 : belt, feed: feed === undefined ? -1 : feed, item, level, own: 0, spray: new Set() });
+      if (belt !== undefined && level) coaterOn.set(belt, Math.max(coaterOn.get(belt) || 0, level));
+      if (belt === undefined) issues.push({ level: 'warn', kind: 'coater', i, msg: t('flow.coaterNoBelt'), items: [] });
+      else if (!level) issues.push({ level: 'warn', kind: 'coater', i, msg: t('flow.coaterNoFeed'), items: [] });
+    });
+    // nivel con el que llega y sale cada objeto de cada cinta: se empieza por arriba (3) y se baja hasta que cuadra
+    const lin = new Map(), dlv = new Map();            // cinta → { objeto: nivel de llegada }; almacén → { objeto: nivel }
+    bs.forEach((b, i) => { if (isBelt(b)) { const o = {}; for (const x of get(items, i)) o[x] = 3; lin.set(i, o); } });
+    const outLv = (i, x) => Math.max((lin.get(i) || {})[x] || 0, coaterOn.get(i) || 0);
+    const predsOf = new Map(), dropsOn = new Map(), intoDepot = new Map(), intoMachine = new Map();
+    bs.forEach((b, i) => {
+      if (isBelt(b) && isBelt(bs[b.outputObjIdx])) get(predsOf, b.outputObjIdx).add(i);
+      if (!isSorter(b)) return;
+      const dst = bs[b.outputObjIdx]; if (!dst) return;
+      if (isBelt(dst)) get(dropsOn, b.outputObjIdx).add(i);
+      else if (DEPOT.has(dst.itemId)) get(intoDepot, base(b.outputObjIdx)).add(i);
+      else get(intoMachine, b.outputObjIdx).add(i);
+    });
+    const depotOfCol = new Map([...colDepot].map(([sp, d]) => [sp, base(d)]));
+    const depotLv = (k, x) => { const o = dlv.get(k); return o && o[x] !== undefined ? o[x] : 3; };
+    // nivel de lo que mueve un clasificador según de dónde lo coge
+    const srcLv = (s, x) => {
+      const src = bs[s.inputObjIdx];
+      if (!src) return 0;
+      if (isBelt(src)) return outLv(s.inputObjIdx, x);
+      if (DEPOT.has(src.itemId)) return depotLv(base(s.inputObjIdx), x);
+      return 0;   // lo que fabrica una máquina sale sin proliferar
+    };
+    const depotFixed = new Map();                       // almacén → objetos que le trae un distribuidor (sin proliferar)
+    bs.forEach((b) => { if (b.itemId === 2107 && b.filterId && bs[b.inputObjIdx] && DEPOT.has(bs[b.inputObjIdx].itemId)) get(depotFixed, base(b.inputObjIdx)).add(b.filterId); });
+    for (let pass = 0, moved = true; moved && pass < 200; pass++) {
+      moved = false;
+      // almacenes: el peor nivel de lo que les entra
+      for (const k of new Set([...intoDepot.keys(), ...depotOfCol.values()])) {
+        const o = dlv.get(k) || dlv.set(k, {}).get(k);
+        for (const x of get(items, k)) {
+          let v = 3, any = false;
+          for (const si of intoDepot.get(k) || []) if (get(moves, si).has(x)) { v = Math.min(v, srcLv(bs[si], x)); any = true; }
+          for (const [sp, d] of depotOfCol) if (d === k) for (const [, bi] of beltsIn.get(sp) || []) if (get(items, bi).has(x)) { v = Math.min(v, outLv(bi, x)); any = true; }
+          if (!any || (depotFixed.get(k) || new Set()).has(x)) v = 0;
+          if (o[x] !== v) { o[x] = v; moved = true; }
+        }
+      }
+      for (const [i, o] of lin) {
+        const b = bs[i], from = bs[b.inputObjIdx];
+        for (const k in o) {
+          const x = +k;
+          let v = 3, any = false;
+          for (const p of predsOf.get(i) || []) if (get(items, p).has(x)) { v = Math.min(v, outLv(p, x)); any = true; }
+          for (const si of dropsOn.get(i) || []) if (get(moves, si).has(x)) { v = Math.min(v, srcLv(bs[si], x)); any = true; }
+          if (from && !isBelt(from)) {
+            if (depotOfCol.has(b.inputObjIdx)) { v = Math.min(v, depotLv(depotOfCol.get(b.inputObjIdx), x)); any = true; }
+            else if (P && P.STATION_SLOTS[from.itemId]) { v = 0; any = true; }
+            else {
+              // divisor, apilador, fraccionador…: lo que entra por sus cintas; lo que fabrica el edificio, sin proliferar
+              let got = false;
+              for (const [, bi] of beltsIn.get(b.inputObjIdx) || []) if (get(items, bi).has(x)) { v = Math.min(v, outLv(bi, x)); got = true; }
+              if (!got) v = 0;
+              any = true;
+            }
+          }
+          if (!any) v = 0;   // principio de la cinta (etiqueta, monitor que genera): llega sin proliferar
+          if (o[x] !== v) { o[x] = v; moved = true; }
+        }
+      }
+    }
+    const incBelts = new Map([...lin].map(([i, o]) => [i, Object.fromEntries(Object.keys(o).map((k) => [k, outLv(i, +k)]))]));
+    for (const c of coaters.values()) {
+      if (c.belt < 0 || !c.level) continue;
+      for (const k in lin.get(c.belt) || {}) if (lin.get(c.belt)[k] < c.level) c.spray.add(+k);
+      c.own = c.feed >= 0 ? outLv(c.feed, c.item) : 0;   // el proliferador rociado da más rociados
+    }
+    const incMachines = new Map();
+    bs.forEach((b, i) => {
+      const r = recipeOf(b);
+      if (!r || isBelt(b) || isSorter(b) || (P && P.STATION_SLOTS[b.itemId]) || b.itemId === 2314) return;
+      let lo = 3, hi = 0;
+      for (const [x] of r.in) {
+        let v = 3, any = false;
+        for (const si of intoMachine.get(i) || []) if (get(moves, si).has(x)) { v = Math.min(v, srcLv(bs[si], x)); any = true; }
+        if (!any) v = 0;
+        lo = Math.min(lo, v); hi = Math.max(hi, v);
+      }
+      incMachines.set(i, lo);
+      if (hi > lo) issues.push({ level: 'warn', kind: 'inc', i, msg: t(lo ? 'flow.incMixed' : 'flow.incPartial', { level: lo }), items: [] });
+    });
+    const inc = { belts: incBelts, machines: incMachines, coaters };
+
     // comprobaciones
     bs.forEach((b, i) => {
       const r = recipeOf(b);
@@ -138,7 +245,7 @@
         const outSorters = bs.some((s) => isSorter(s) && s.inputObjIdx === i);
         if (!outSorters) issues.push({ level: 'warn', kind: 'noout', i, msg: t('flow.noOut'), items: r.out.map(([id]) => id) });
         // ¿dan abasto los clasificadores? (lo que pide o fabrica la máquina por minuto contra lo que pueden mover)
-        const m = RT && RT.machine(b);
+        const m = RT && RT.machine(b, incMachines.get(i) || 0);
         if (m) {
           const cap = (list, id) => list.filter((s) => get(moves, bs.indexOf(s)).has(id)).reduce((a, s) => a + RT.sorter(s), 0);
           const ins = bs.filter((s) => isSorter(s) && s.outputObjIdx === i), outs = bs.filter((s) => isSorter(s) && s.inputObjIdx === i);
@@ -193,7 +300,7 @@
       ends++; if (firstEnd < 0) firstEnd = i;
     });
     if (ends) issues.unshift({ level: 'warn', kind: 'ends', i: firstEnd, msg: t('flow.ends', { n: ends }), items: [] });
-    return { items, supplied, sinks, moves, issues };
+    return { items, supplied, sinks, moves, issues, inc };
   }
 
   root.DSPFlow = { analyze };

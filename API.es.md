@@ -118,13 +118,14 @@ En `list()` y `get()` cada edificio trae `i, itemId, name, kind, x, y, z, yaw` y
 - **Entradas:** puertos de salida de estaciones (cinta llena del producto elegido), monitores que generan y cintas con etiqueta cuando antes no entra nada y después ninguna máquina deja ese producto (una etiqueta en una cinta de salida no inventa producto).
 - **Salidas:** monitores que consumen, puertos de entrada de estaciones y almacenes sin clasificadores de salida. Sin salidas, las cintas se llenan y todo se para, como en el juego; `openEnds` hace que el final de las cintas sin salida retire lo que llega.
 - **Contrapresión:** solo entra lo que se consume. Cada máquina va a la velocidad de su entrada más escasa y de lo que le pueden sacar.
-- Sin proliferador ni apilado en la cinta; el fraccionador es aproximado.
+- Proliferadores: cada pulverizador rocía lo que pasa por la cinta de su casilla con el proliferador que lleva la cinta que lo cruza un nivel más arriba (si esa cinta no trae nada conocido, ponle la etiqueta del proliferador); una máquina a la que le llegan todas las entradas rociadas da productos extra o va más rápido según su modo (parámetro 0; el 1 en laboratorios) y gasta más energía; el proliferador que gastan los pulverizadores sale en `sprays`.
+- Sin apilado en la cinta; el fraccionador es aproximado.
 
 ### Ritmos y potencia
 
 `get(i)` trae además, en las máquinas con receta, `rates`: `{ speed, base, cycle, in, out }` (tiempo de la receta, multiplicador de velocidad del edificio, segundos por ciclo y objetos por minuto), y en los edificios que gastan o generan electricidad, `power`: `{ work, idle }` en kW (negativo = genera). En estaciones y distribuidor, `work` es su potencia de carga configurada.
 
-Los cálculos (`js/rates.js`) suponen las máquinas trabajando sin parar y sin proliferador; los fraccionadores no entran porque su ritmo depende de la cinta. Datos: tiempos y cantidades de las recetas en `js/recipes.js` (`time`, `in`, `out`), velocidad y consumo de cada edificio en `js/machines.js` (de [factoriolab](https://github.com/factoriolab/factoriolab), `node tools/gen_machines.js`). Ejemplo: la ensambladora Mk.I tiene `speed: 0.75`, así que un engranaje (1 s) tarda 1,33 s y hace 45/min.
+Los cálculos (`js/rates.js`) suponen las máquinas trabajando sin parar, con el nivel de proliferado que le llega a cada una; los fraccionadores no entran porque su ritmo depende de la cinta. Datos: tiempos y cantidades de las recetas en `js/recipes.js` (`time`, `in`, `out`), velocidad y consumo de cada edificio en `js/machines.js` (de [factoriolab](https://github.com/factoriolab/factoriolab), `node tools/gen_machines.js`). Ejemplo: la ensambladora Mk.I tiene `speed: 0.75`, así que un engranaje (1 s) tarda 1,33 s y hace 45/min.
 
 ### Reglas que aplica (igual que el editor)
 

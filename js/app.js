@@ -908,6 +908,21 @@
     }
   }
 
+  const INC_COLORS = ['', '#d1b13e', '#58c46a', '#4f9dff'];
+  function drawIncMarks(list, offsetOf) {
+    const s = S.view.scale;
+    if (!S.inc || !S.inc.size || s < 7) return;
+    for (const b of list) {
+      const lv = S.inc.get(b); if (!lv) continue;
+      const [ox, oy] = offsetOf(b), fp = footprint(b), k = Math.max(6, Math.min(s * 0.36, 11));
+      const [x, y] = w2s(b.x + fp.w / 2 - 0.4 + ox, b.y + oy);
+      ctx.fillStyle = INC_COLORS[lv]; ctx.strokeStyle = '#0f1218'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x, y - k); ctx.lineTo(x + k * 0.95, y + k * 0.7); ctx.lineTo(x - k * 0.95, y + k * 0.7); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#0f1218'; ctx.font = `bold ${Math.round(k * 0.95)}px Segoe UI`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(lv), x, y + k * 0.18);
+    }
+  }
+
   // Cobertura eléctrica: área de suministro de cada torre (y su longitud de conexión, a rayas, si está seleccionada)
   function powerCircle(x, y, r, strong) {
     const [px, py] = w2s(x, y), s = S.view.scale;
@@ -1015,7 +1030,7 @@
     }
     drawList(visible.filter((b) => order(b) === 0 && b.z > 0.5));
     drawList(visible.filter(isSorter));
-    if (S.showLabels) drawOutputIcons(visible, offsetOf);
+    if (S.showLabels) { drawOutputIcons(visible, offsetOf); drawIncMarks(visible, offsetOf); }
     if (S.showChecks) { drawFlowMarks(visible, offsetOf); drawSimMarks(visible, offsetOf); }
     if (S.showPower) drawPowerMarks(visible, offsetOf);
 
@@ -2203,7 +2218,9 @@
     if (S.bp && S.flowBp === S.bp && S.flowKey === k) return;
     S.flowBp = S.bp; S.flowKey = k;
     S.flow = S.bp ? FL.analyze(S.bp.buildings) : null;
-    S.sim = S.bp ? SM.run(S.bp.buildings, { openEnds: S.openEnds, fillDepots: S.fillDepots }) : null;
+    S.sim = S.bp ? SM.run(S.bp.buildings, { openEnds: S.openEnds, fillDepots: S.fillDepots, inc: S.flow.inc }) : null;
+    S.inc = new Map();   // edificio → nivel de proliferado con el que trabaja (0 = sin proliferar)
+    if (S.flow) for (const [i, v] of S.flow.inc.machines) if (v) S.inc.set(S.bp.buildings[i], v);
     S.power = S.bp ? PW.analyze(S.bp.buildings, COL.body) : null;
     S.unpowered = new Set(S.power ? [...S.power.unpowered].map((i) => S.bp.buildings[i]) : []);
     S.flowMarks = new Map();
@@ -2276,6 +2293,7 @@
       for (const x in m.prod) { const r = at(x); r.made += m.prod[x] * m.r; r.maxMade += m.prod[x]; }
       for (const x in m.need) { const r = at(x); r.used += m.need[x] * m.r; r.maxUsed += m.need[x]; }
     }
+    if (S.sim) for (const v of S.sim.sprays.values()) for (const x in v) { const r = at(x); r.used += v[x]; r.maxUsed += v[x]; }
     const list = [...rows.values()];
     // sin nada conectado no se mueve nada: se enseña lo que haría a pleno rendimiento
     const idle = list.length > 0 && list.every((r) => r.made < 1e-6);
@@ -2293,17 +2311,18 @@
     if (!p.machines) return '';
     const row = (r, v, max) => `<div class="prow"><span class="ioi">${itemIcon(r.id, 26)}</span><span class="ion">${esc(IT.itemName(r.id))}</span><span class="pnum"><b>${fmtRate(Math.abs(v))}</b>${!p.idle && Math.abs(v) < Math.abs(max) * 0.995 ? `<span class="muted small"> ${t('prod.of', { max: fmtRate(Math.abs(max)) })}</span>` : ''}</span></div>`;
     const midRow = (r) => `<div class="prow small"><span class="ioi">${itemIcon(r.id, 20)}</span><span class="ion">${esc(IT.itemName(r.id))}</span><span class="muted">${t('prod.midRow', { a: fmtRate(r.made), b: fmtRate(r.used) })}</span></div>`;
-    const tt = RT.totals(S.bp.buildings);
+    const tt = RT.totals(S.bp.buildings, incOf);
     return `<hr class="sep"><h3>${t('prod.title')} <span class="muted small">${t('prod.perMin')}</span></h3>
       ${p.idle ? `<p class="warn-text small">${t('prod.idle')}</p>` : ''}
       ${p.makes.length ? `<div class="plabel ok-text">${t('prod.makes')}</div>${p.makes.map((r) => row(r, r.net, r.maxNet)).join('')}` : ''}
       ${p.needs.length ? `<div class="plabel warn-text">${t('prod.needs')}</div>${p.needs.map((r) => row(r, r.net, r.maxNet)).join('')}` : ''}
       ${p.mid.length ? `<details class="pmid"><summary>${t('prod.mid', { n: p.mid.length })}</summary>${p.mid.map(midRow).join('')}</details>` : ''}
+      ${S.inc && S.inc.size ? `<p class="small"><b class="inc2">▲</b> ${t('prod.machines', { n: S.inc.size, total: p.machines })}</p>` : ''}
       <p class="muted small">${t('prod.note')}${tt.notes.length ? ' ' + esc(tt.notes.join(' · ')) + '.' : ''}</p>`;
   }
   // Energía del blueprint: consumo, generación y cuántos edificios quedan fuera de las áreas de suministro
   function powerSummaryHTML() {
-    const tt = RT.totals(S.bp.buildings), pw = S.power;
+    const tt = RT.totals(S.bp.buildings, incOf), pw = S.power;
     if (!tt.work && !tt.gen && !(pw && (pw.consumers || pw.nodes.length))) return '';
     let cov = '';
     if (pw && pw.consumers) {
@@ -2508,14 +2527,37 @@
   }
 
   // ------------------------------------------------------------------ recetas, ritmos y potencia (js/rates.js)
+  const incOf = (b) => (S.inc && S.inc.get(b)) || 0;
   const fmtRate = (v) => I18N.num(v >= 100 ? Math.round(v) : v >= 10 ? Math.round(v * 10) / 10 : Math.round(v * 100) / 100);
   const fmtTime = (v) => `${I18N.num(Math.round(v * 1000) / 1000)} s`;
   const fmtPower = (kw) => (Math.abs(kw) >= 1000 ? `${I18N.num(Math.round(kw / 10) / 100)} MW` : `${I18N.num(Math.round(kw * 10) / 10)} kW`);
   const gotOf = (b) => (S.flow && S.flow.supplied.get(S.bp.buildings.indexOf(b))) || new Set();
   const ioRow = (id, n, perMin, ok) => `<div class="io">${ok === undefined ? '' : `<span class="${ok ? 'okmark' : 'badmark'}">${ok ? '✓' : '✗'}</span>`}<span class="ioi">${itemIcon(id, 22)}</span><span class="ion">${esc(IT.itemName(id))}</span>${n !== null ? `<span class="muted">×${n}</span>` : ''}<span class="ior">${fmtRate(perMin)}/min</span></div>`;
   // Receta de una máquina: tiempo con su multiplicador, entradas y salidas por ciclo y por minuto
+  const pct = (v) => I18N.num(Math.round(v * 1000) / 10);
+  // Proliferador de una máquina: con qué nivel le llegan las entradas, qué gana y qué hace con él
+  function incHTML(b, m) {
+    const lv = m.inc, forced = RT.accForced(b), can = RT.canExtra(b.recipeId);
+    const gain = !lv ? `<span class="muted">${t('inc.none')}</span>`
+      : `<b class="inc${lv}">${t('inc.level', { mk: ['', 'I', 'II', 'III'][lv] })}</b> · ${t(m.mode === 'extra' ? 'inc.extra' : 'inc.speed', { pct: pct(RT.INC[m.mode][lv]) })} · <span class="muted">${t('inc.power', { pct: pct(RT.INC.power[lv]) })}</span>`;
+    const chip = (v, key, off) => `<button type="button" class="chip${(m.mode === 'speed') === !!v ? ' on' : ''}" data-act="accMode" data-id="${v}" style="--c:#8892a6"${off ? ' disabled' : ''}>${t(key)}</button>`;
+    return `<h4>${t('inc.title')}</h4><p class="small" style="margin:2px 0 6px">${gain}</p>
+      ${field(t('inc.mode'), `<div class="chips">${chip(0, 'inc.mode.extra', !can)}${chip(1, 'inc.mode.speed', false)}</div>`)}
+      ${can || forced ? '' : `<p class="muted small">${t('inc.onlySpeed')}</p>`}`;
+  }
+  // Pulverizador: con qué rocía, qué rocía y cuánto proliferador gasta
+  function coaterHTML(b) {
+    const i = S.bp.buildings.indexOf(b), c = S.flow && S.flow.inc.coaters.get(i);
+    if (!c) return '';
+    const use = (S.sim && S.sim.sprays.get(i)) || {}, per = c.level ? RT.sprays(c.item, c.own) : 0;
+    const names = [...c.spray].map((x) => `<span class="carry">${itemIcon(x, 20)}<span>${esc(IT.itemName(x))}</span></span>`).join('');
+    return `<h4>${t('inc.title')}</h4>
+      ${field(t('inc.coater'), c.level ? `<span class="carry">${itemIcon(c.item, 22)}<span>${esc(IT.itemName(c.item))}</span></span> <span class="muted small">${t('inc.sprays', { n: per })}</span>` : `<span class="warn-text">${t('inc.coaterNone')}</span>`)}
+      ${field(t('inc.items'), names ? `<div class="carries">${names}</div>` : `<span class="muted small">${t('inc.nothing')}</span>`)}
+      ${c.level ? field(t('inc.uses'), `<b>${fmtRate(use[c.item] || 0)}/min</b>`) : ''}${issuesOf(i)}`;
+  }
   function rateHTML(b) {
-    const m = RT.machine(b);
+    const m = RT.machine(b, incOf(b));
     if (!m) return b.itemId === 2314 && b.recipeId ? `<p class="muted small">${t('rate.fract')}</p>` : '';
     const r = IT.RECIPE_INFO[b.recipeId] || {}, src = window.DSPRecipes[b.recipeId];
     const sp = m.speed !== 1 ? `${fmtTime(m.base)} × 1/${I18N.num(m.speed)} = <b>${fmtTime(m.cycle)}</b>` : `<b>${fmtTime(m.cycle)}</b>`;
@@ -2523,7 +2565,7 @@
       ${field(t('rate.cycle'), `${sp} <span class="muted small">(${t('rate.speed', { speed: I18N.num(m.speed) })})</span>`)}
       <div class="muted small">${t('rate.inputs')} <span class="small">${t('rate.inputsNote')}</span></div>${src.in.map(([id, n], i) => ioRow(id, n, m.in[i][1], gotOf(b).has(id))).join('')}
       <div class="muted small">${t('rate.outputs')}</div>${src.out.map(([id, n], i) => ioRow(id, n, m.out[i][1])).join('')}
-    </div>`;
+    </div>${incHTML(b, m)}`;
   }
   // Cobertura (torres: su área; consumidores: si les llega) y altura que ocupa el edificio
   function coverHTML(b) {
@@ -2533,12 +2575,13 @@
     else if (PW.consumes(b) && S.power && S.power.nodes.length) html += field(t('pw.state'), S.unpowered.has(b) ? `<span class="bad-text">⚡ ${t('pw.uncovered')}</span>` : `<span class="ok-text">${t('pw.covered')}</span>`);
     if (!isBelt(b) && !isSorter(b)) {
       const hh = window.DSPCollision.HEIGHT[b.itemId];
-      html += field(t('b.height'), hh === undefined ? `<span class="muted small">${t('b.heightUnknown')}</span>` : t('b.heightN', { n: hh }));
+      html += field(t('b.tall'), hh === undefined ? `<span class="muted small">${t('b.heightUnknown')}</span>` : t('b.heightN', { n: hh }));
     }
     return html;
   }
   function powerHTML(b) {
-    const p = RT.power(b);
+    const p = RT.power(b, incOf(b)), co = b.itemId === 2313 ? coaterHTML(b) : '';
+    if (co) return co + (p ? `<h4>${t('power.use')}</h4>${field(t('power.work'), fmtPower(p.work))}${field(t('power.idle'), fmtPower(p.idle))}` : '') + coverHTML(b);
     if (!p) return coverHTML(b);
     if (p.work < 0) return `<h4>${t('power.title')}</h4>${field(t('power.gen'), fmtPower(-p.work))}${coverHTML(b)}`;
     return `<h4>${t('power.use')}</h4>${field(t('power.work'), fmtPower(p.work))}${field(t('power.idle'), fmtPower(p.idle))}${coverHTML(b)}`;
@@ -2624,7 +2667,7 @@
 
   // Balance de un grupo de edificios: lo que se produce y consume por minuto y la potencia
   function totalsHTML(list, what) {
-    const tt = RT.totals(list);
+    const tt = RT.totals(list, incOf);
     if (!tt.machines && !tt.work && !tt.gen) return '';
     const rows = tt.items.map(([id, i, o]) => {
       const net = o - i, cls = Math.abs(net) < 1e-6 ? 'muted' : net > 0 ? 'pos' : 'neg';
@@ -2941,6 +2984,17 @@
     const act = t.dataset.act, b = [...S.sel][0];
     if (act === 'setProp' || act === 'pickProp') { propAction(t); return; }
     if (act === 'portOut') { setPortOut(S.bp.buildings[+t.dataset.st], +t.dataset.k, +t.dataset.v); return; }
+    if (act === 'accMode') {
+      // qué hace la máquina con el proliferador: 0 = productos extra, 1 = acelerar (parámetro 0; el 1 en los laboratorios)
+      pushUndo();
+      for (const x of S.sel) {
+        if (!IT.RECIPE_GROUP[x.itemId] || x.itemId === 2314) continue;
+        const k = x.itemId === 2901 || x.itemId === 2902 ? 1 : 0;
+        x.parameters = [...(x.parameters || [])]; while (x.parameters.length <= k) x.parameters.push(0);
+        x.parameters[k] = +t.dataset.id;
+      }
+      setDirty(true); refresh(); return;
+    }
     if (act === 'pickBpIcon') {
       const h = S.bp.header, i = +t.dataset.i;
       openItemPicker(t, h.icons[i] || 0, I18N.t('bp.noIcon'), (id) => { pushUndo(); h.icons[i] = +id || 0; setDirty(true); renderInspector(); });
@@ -3268,10 +3322,10 @@ Editor: select(indices) · selection() · undo() · redo() · fit() · setLang('
           (!f.near || Math.hypot(b.x - f.near[0], b.y - f.near[1]) <= (f.near[2] || 3))).map(describe);
       },
       get(i) {
-        const b = get(i), p = PR.read(b), m = RT.machine(b), w = RT.power(b);
+        const b = get(i), p = PR.read(b), m = RT.machine(b, incOf(b)), w = RT.power(b, incOf(b));
         return { ...describe(b), ...(p ? { props: p } : {}), ...(m ? { rates: m } : {}), ...(w ? { power: w } : {}), raw: JSON.parse(JSON.stringify(b)) };
       },
-      balance(indices) { return S.bp ? RT.totals(indices === undefined ? bsx() : arr(indices).map(get)) : null; },
+      balance(indices) { return S.bp ? RT.totals(indices === undefined ? bsx() : arr(indices).map(get), incOf) : null; },
       simulate(opts) {
         if (!S.bp) return null;
         const r = SM.run(bsx(), opts || { openEnds: S.openEnds, fillDepots: S.fillDepots }), obj = (m) => Object.fromEntries([...m].map(([k, v]) => [k, v]));

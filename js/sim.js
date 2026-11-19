@@ -1,7 +1,7 @@
 // Simulación de flujo en régimen estable: cuántos objetos por minuto pasan por cada cinta, clasificador y
 // máquina una vez estabilizado el blueprint.
 //
-//   DSPSim.run(buildings, { openEnds, fillDepots }) → {
+//   DSPSim.run(buildings, { openEnds, fillDepots, inc }) → {
 //     belts:    Map(cinta → { objeto: /min })            lo que pasa por la casilla (antes de que cojan de ella)
 //     sorters:  Map(clasificador → { objeto: /min })
 //     machines: Map(máquina → { r, rIn, rOut, limit, need, prod, got, made })
@@ -10,6 +10,7 @@
 //     sources:  Map(edificio o cinta → { objeto: /min })   sinks: Map(edificio → { objeto: /min })
 //     jams:     [{ i, item, rate }]  cintas con mezcla en las que sobra un producto que nadie recoge (se atascan)
 //     offers:   [{ i, depot, item, rate, inflow }]  distribuidores que ofrecen: lo que sobra en su almacén y se llevan
+//     sprays:   Map(pulverizador → { proliferador: /min })  lo que gasta cada pulverizador
 //     iterations, converged
 //   }
 //
@@ -31,7 +32,11 @@
 //   · Contrapresión: lo que no se consume no entra. Una máquina va a la velocidad que le permiten su entrada más
 //     escasa y lo que le pueden sacar (si se le llena una salida, se para).
 //   · Clasificadores: capacidad de js/rates.js (Mk.I 90/min con 1 casilla, 45 con 2, 30 con 3).
-//   · Sin proliferador ni apilado en la cinta. El fraccionador se aproxima (1 % del hidrógeno que pasa).
+//   · Proliferador (opts.inc = DSPFlow.analyze(buildings).inc; si falta, se calcula): cada máquina va con el nivel
+//     de proliferado que le llega (productos extra o más velocidad, js/rates.js) y cada pulverizador retira de la
+//     cinta que lo cruza el proliferador que gasta: lo que rocía por minuto entre los rociados de cada unidad.
+//     El nivel es estructural: si el proliferador no llega, la máquina se sigue contando como proliferada.
+//   · Sin apilado en la cinta. El fraccionador se aproxima (1 % del hidrógeno que pasa).
 // Se resuelve por iteraciones: demanda hacia atrás, suministro hacia delante y velocidad de cada máquina.
 (function (root) {
   const R = root.DSPRecipes || {}, P = root.DSPProps, RT = root.DSPRates;
@@ -46,6 +51,11 @@
 
   function run(bs, opts = {}) {
     const N = bs.length, maxIt = opts.iterations || 400;
+    const inc = opts.inc || (root.DSPFlow ? root.DSPFlow.analyze(bs).inc : null);
+    const incOf = (i) => (inc && inc.machines.get(i)) || 0;
+    // pulverizadores: cinta del proliferador → { coater, item, belt, spray, per }
+    const coaterAt = new Map();
+    if (inc) for (const [ci, c] of inc.coaters) if (c.level && c.belt >= 0 && c.feed >= 0) coaterAt.set(c.feed, { coater: ci, item: c.item, belt: c.belt, spray: c.spray, per: RT.sprays(c.item, c.own) });
     const isStation = (b) => !!b && !!P && !!P.STATION_SLOTS[b.itemId];
     const recipeOK = (b) => b && !isBelt(b) && !isSorter(b) && !isStation(b) && b.itemId !== 2314 && b.recipeId && R[b.recipeId] && R[b.recipeId].in;
 
@@ -173,7 +183,7 @@
     // ---------------------------------------------------------------- estado
     const machines = new Map();
     bs.forEach((b, i) => {
-      const m = recipeOK(b) && RT.machine(b);
+      const m = recipeOK(b) && RT.machine(b, incOf(i));
       if (m) machines.set(i, { need: Object.fromEntries(m.in), prod: Object.fromEntries(m.out), r: 1, rIn: 1, rOut: 1, bound: 1, got: {}, gotBy: {}, limit: { kind: 'none', item: 0 } });
     });
     let flow = Array.from({ length: N }, () => ({}));       // lo que pasa por cada cinta (antes de que cojan)
@@ -181,7 +191,9 @@
     let moved = Array.from({ length: N }, () => ({}));
     let mainIn = Array.from({ length: N }, () => ({}));     // lo que llegó por detrás
     let depotIn = new Map();
-    let sinks = new Map(), sources = new Map(), jams = [], offers = [];
+    let sinks = new Map(), sources = new Map(), jams = [], offers = [], sprays = new Map();
+    // proliferador que pide un pulverizador: lo que rocía (según lo que pasó en la vuelta anterior) entre sus rociados
+    const coaterWant = (c) => { let v = 0; const fl = flow[c.belt] || {}; for (const k in fl) if (c.spray.has(+k)) v += fl[k]; return c.per > 0 ? v / c.per : 0; };
 
     // Lo que pide una máquina de x. Hacia atrás (demanda) se pide como si las demás entradas llegasen (si no, una
     // máquina que recibe poco pediría poco y nunca saldría de ahí); al repartir, solo lo que puede gastar.
@@ -229,6 +241,8 @@
         for (const x of items) {
           let v = 0;
           if (sink && (sink[1] === 0 || sink[1] === x)) v = Infinity;
+          const co = coaterAt.get(i);
+          if (co && co.item === x) v += coaterWant(co);
           for (const s of pickAt[i]) v += sorterWant(s, x, dem, prevGot);
           const n = next(i);
           if (n >= 0) v += mainPred[n] === i ? (dem[n] || {})[x] || 0 : Math.max(0, ((dem[n] || {})[x] || 0) - (mainIn[n][x] || 0));
@@ -249,6 +263,7 @@
       phase = 'sup';
       const nflow = Array.from({ length: N }, () => ({})), npass = Array.from({ length: N }, () => ({}));
       const nmoved = Array.from({ length: N }, () => ({})), nmain = Array.from({ length: N }, () => ({}));
+      const nsprays = new Map();
       const ndepot = new Map(), nsinks = new Map(), nsources = new Map(), rejected = Array.from({ length: N }, () => ({}));
       const drops = Array.from({ length: N }, () => ({}));   // cinta → lo que le dejan clasificadores desde otra cinta
       const jIn = new Map(), jOut = new Map();
@@ -357,6 +372,9 @@
         nflow[i] = { ...f };
         // los clasificadores que cogen de aquí
         const out = { ...f };
+        // el pulverizador que cruza esta cinta se lleva su proliferador
+        const co = coaterAt.get(i);
+        if (co && out[co.item]) { const t = Math.min(out[co.item], coaterWant(co)); if (t > EPS) { out[co.item] -= t; add(bag(nsprays, co.coater), co.item, t); } }
         for (const s of pickAt[i]) {
           for (const k in out) {
             if (!filterOk(s, k)) continue;
@@ -435,7 +453,7 @@
         const a = ndepot.get(k) || {}, o = depotIn.get(k) || {};
         for (const x of new Set([...Object.keys(a), ...Object.keys(o)])) delta = Math.max(delta, Math.abs((a[x] || 0) - (o[x] || 0)));
       }
-      flow = nflow; pass = npass; moved = nmoved; mainIn = nmain; depotIn = ndepot; sinks = nsinks; sources = nsources; offers = noffers;
+      flow = nflow; pass = npass; moved = nmoved; mainIn = nmain; depotIn = ndepot; sinks = nsinks; sources = nsources; offers = noffers; sprays = nsprays;
       // atascos: en una cinta con mezcla sobra un producto que nadie recoge
       jams = [];
       for (let i = 0; i < N; i++) for (const k in rejected[i]) if (rejected[i][k] > 0.5 && Object.keys(flow[i]).length > 1) jams.push({ i, item: +k, rate: rejected[i][k] });
@@ -469,9 +487,9 @@
     return {
       belts: new Map(flow.map((f, i) => [i, f]).filter(([i]) => isBelt(bs[i]))),
       sorters: new Map(moved.map((f, i) => [i, f]).filter(([i]) => isSorter(bs[i]))),
-      machines: new Map([...machines].map(([i, m]) => [i, { r: m.r, rIn: m.rIn, rOut: m.rOut, limit: m.limit, need: m.need, prod: m.prod, got: m.got, made: m.made }])),
+      machines: new Map([...machines].map(([i, m]) => [i, { r: m.r, rIn: m.rIn, rOut: m.rOut, limit: m.limit, need: m.need, prod: m.prod, got: m.got, made: m.made, inc: incOf(i) }])),
       sources: new Map([...sources].filter(([, v]) => Object.keys(v).length)), sinks: new Map([...sinks].filter(([, v]) => Object.keys(v).length)),
-      jams, offers, iterations: it, converged,
+      jams, offers, sprays, iterations: it, converged,
     };
   }
 

@@ -264,3 +264,6 @@ table.rates td:first-child { width: 20px; }
 .side-tgl:hover { color: var(--accent); }
 #tglLeft { left: 0; border-left: none; border-radius: 0 6px 6px 0; }
 #tglRight { right: 0; border-right: none; border-radius: 6px 0 0 6px; }
+
+/* Proliferador: color por nivel (como cintas y clasificadores) */
+.inc1 { color: #d1b13e; } .inc2 { color: #58c46a; } .inc3 { color: #4f9dff; }

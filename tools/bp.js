@@ -71,8 +71,9 @@ const out = (data, file) => (file ? fs.writeFileSync(file, data) : process.stdou
     for (const b of bp.buildings) c.set(b.itemId, (c.get(b.itemId) || 0) + 1);
     console.log(`${bp.header.shortDesc || '(unnamed)'} · ${bp.buildings.length} buildings`);
     for (const [id, n] of [...c].sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(4)}  ${name(id)} (${id})`);
-    // balance per minute (machines non-stop, no proliferator) and power
-    const t = RT.totals(bp.buildings), f = (v) => (Math.round(v * 100) / 100).toString().padStart(9);
+    // balance per minute (machines non-stop, with the proliferator level that reaches each one) and power
+    const lv = FL.analyze(bp.buildings).inc.machines;
+    const t = RT.totals(bp.buildings, (x) => lv.get(bp.buildings.indexOf(x)) || 0), f = (v) => (Math.round(v * 100) / 100).toString().padStart(9);
     const kw = (v) => (v >= 1000 ? `${(v / 1000).toFixed(2)} MW` : `${v.toFixed(1)} kW`);
     if (t.items.length) {
       console.log(`
@@ -93,6 +94,9 @@ Power: ${kw(t.work)} working · ${kw(t.idle)} idle${t.gen ? ` · generates ${kw(
     for (const j of r.jams.slice(0, 20)) console.log(`  jam on belt #${j.i}: ${f(j.rate)}/min of ${IT.itemName(j.item)} left over`);
     const show = (t, o) => { console.log(t); for (const [k, v] of Object.entries(o).sort((a, b) => b[1] - a[1])) console.log(`  ${IT.itemName(+k).padEnd(34)} ${f(v).padStart(8)}/min`); };
     show('In:', sumUp(r.sources)); show('Out:', sumUp(r.sinks));
+    if (r.sprays.size) show('Proliferator used by spray coaters:', sumUp(r.sprays));
+    const pro = ms.filter(([, m]) => m.inc).length;
+    if (pro) console.log(`${pro} of ${ms.length} machines work proliferated`);
   } else {
     console.error(`Unknown command: ${cmd}`); process.exit(1);
   }

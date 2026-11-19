@@ -118,13 +118,14 @@ In `list()` and `get()` each building has `i, itemId, name, kind, x, y, z, yaw` 
 - **Inputs:** station output ports (a full belt of the chosen product), generating monitors, and labelled belts when nothing comes in before and no machine further on outputs that product (a label on an output belt doesn't create product).
 - **Outputs:** consuming monitors, station input ports and depots without output sorters. Without outputs, belts fill up and everything stops, as in the game; `openEnds` makes the end of belts with no exit remove what reaches them.
 - **Back pressure:** only what is consumed comes in. Each machine runs at the speed of its scarcest input and of what can be taken out of it.
-- No proliferator and no stacking on the belt; the fractionator is approximate.
+- Proliferators: each spray coater sprays what passes on the belt through its cell with the proliferator carried by the belt that crosses it one level up (if that belt brings nothing known, label it with the proliferator); a machine whose inputs all arrive sprayed gives extra products or runs faster depending on its mode (parameter 0; 1 in labs) and uses more power; the proliferator used by the coaters is in `sprays`.
+- No stacking on the belt; the fractionator is approximate.
 
 ### Rates and power
 
 `get(i)` also includes, for machines with a recipe, `rates`: `{ speed, base, cycle, in, out }` (recipe time, building speed multiplier, seconds per cycle and items per minute), and for buildings that use or generate electricity, `power`: `{ work, idle }` in kW (negative = generates). On stations and distributor, `work` is their configured charging power.
 
-The calculations (`js/rates.js`) assume machines working non-stop with no proliferator; fractionators are left out because their rate depends on the belt. Data: recipe times and amounts in `js/recipes.js` (`time`, `in`, `out`), speed and power of each building in `js/machines.js` (from [factoriolab](https://github.com/factoriolab/factoriolab), `node tools/gen_machines.js`). Example: the Assembling Machine Mk.I has `speed: 0.75`, so a gear (1 s) takes 1.33 s and makes 45/min.
+The calculations (`js/rates.js`) assume machines working non-stop, with the proliferator level that reaches each one; fractionators are left out because their rate depends on the belt. Data: recipe times and amounts in `js/recipes.js` (`time`, `in`, `out`), speed and power of each building in `js/machines.js` (from [factoriolab](https://github.com/factoriolab/factoriolab), `node tools/gen_machines.js`). Example: the Assembling Machine Mk.I has `speed: 0.75`, so a gear (1 s) takes 1.33 s and makes 45/min.
 
 ### Rules it applies (same as the editor)
 
